@@ -68,10 +68,10 @@ Admin actions are protected by [Sign-In with Ethereum (EIP-4361)](https://eips.e
 ```
 1. User connects wallet
 2. UI shows "Sign In" with explanation — no gas required
-3. Frontend requests a nonce: POST /access-api/siwe/nonce
+3. Frontend requests a nonce: POST /v1/auth/siwe/nonce
 4. EIP-4361 message built client-side (domain, statement, nonce, chainId, issuedAt)
 5. wagmi signMessage → user approves in wallet
-6. POST /access-api/siwe/verify → { token, expiresAt }
+6. POST /v1/auth/siwe/verify → { token, expiresAt }
 7. Token stored in sessionStorage; auto-attached to admin mutations
 8. 401 from backend shows inline re-auth banner without page redirect
 ```
@@ -80,9 +80,9 @@ Admin actions are protected by [Sign-In with Ethereum (EIP-4361)](https://eips.e
 
 | Method | Path | Body | Response |
 |--------|------|------|----------|
-| `POST` | `/access-api/siwe/nonce` | `{ address }` | `{ nonce: string }` |
-| `POST` | `/access-api/siwe/verify` | `{ message, signature }` | `{ token, address, expiresAt }` |
-| `POST` | `/access-api/siwe/logout` | — (Bearer token in header) | `204 No Content` |
+| `POST` | `/v1/auth/siwe/nonce` | `{ address }` | `{ nonce: string }` |
+| `POST` | `/v1/auth/siwe/verify` | `{ message, signature }` | `{ token, address, expiresAt }` |
+| `POST` | `/v1/auth/siwe/logout` | — (Bearer token in header) | `204 No Content` |
 
 > In **mock mode** all three endpoints are simulated in-memory — no backend required.
 
@@ -138,6 +138,27 @@ npm run typecheck  # TypeScript type checking
 - **Access API**: `lib/api/live.ts` integrates with `guildpass-core` `/v1/*` endpoints
 - **Contract clients/ABIs**: Add viem/wagmi hooks in feature modules as needed
 - **Shared types**: `lib/api/types.ts` — align with `guildpass-core` shared types package
+
+### Live API endpoints
+
+All live requests are sent to `NEXT_PUBLIC_CORE_API_URL` (default `http://localhost:4000`).
+
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| `GET` | `/v1/session?address=<addr>` | — | Current session for address |
+| `GET` | `/v1/community` | — | Community info |
+| `GET` | `/v1/members` | — | All member rows |
+| `GET` | `/v1/members/:address/membership` | — | Membership for address |
+| `GET` | `/v1/members/:address/profile` | — | Profile for address |
+| `GET` | `/v1/resources` | — | Available gated resources |
+| `GET` | `/v1/policies` | — | Access policies |
+| `POST` | `/v1/members/:address/roles` | Bearer | Assign role to member |
+| `PUT` | `/v1/policies/:resourceId` | Bearer | Update access policy |
+| `POST` | `/v1/auth/siwe/nonce` | — | Request SIWE nonce |
+| `POST` | `/v1/auth/siwe/verify` | — | Verify SIWE signature → token |
+| `POST` | `/v1/auth/siwe/logout` | Bearer | Invalidate session |
+
+> Path and query parameters are URL-encoded. Backend responses are mapped into frontend types via the response-mapping layer in `lib/api/live.ts`.
 
 ---
 

@@ -72,6 +72,60 @@ export type SiweAuthState =
   | SiweAuthSession
   | { isAuthenticated: false }
 
+// ── Backend raw types (guildpass-core response shapes) ───────────────────────
+// These are the shapes returned by /v1/* endpoints. The live API client maps
+// them into the frontend types above. Fields are optional because backend
+// versions may use snake_case or camelCase, and this mapping handles both.
+
+export interface BackendMember {
+  address?: string
+  wallet_address?: string
+  tier?: MembershipTier
+  membership_tier?: MembershipTier
+  active?: boolean
+  is_active?: boolean
+  expiresAt?: string
+  expires_at?: string
+  roles?: Role[]
+  // Profile fields (returned by /v1/members/:address/profile)
+  displayName?: string
+  display_name?: string
+  username?: string
+  bio?: string
+  badges?: string[]
+}
+
+export interface BackendResource {
+  id: string
+  title?: string
+  name?: string
+  description?: string
+  minTier?: MembershipTier
+  min_tier?: MembershipTier
+  roles?: Role[]
+}
+
+export interface BackendPolicy {
+  resourceId?: string
+  resource_id?: string
+  minTier?: MembershipTier
+  min_tier?: MembershipTier
+  roles?: Role[]
+}
+
+export interface BackendSession {
+  address?: string
+  wallet_address?: string
+  roles?: Role[]
+  membership?: Partial<BackendMember>
+  community?: {
+    id: string
+    name: string
+    description?: string
+    tiers?: MembershipTier[]
+  }
+}
+
 // ── API Interface ─────────────────────────────────────────────────────────────
 
 export interface AccessApi {

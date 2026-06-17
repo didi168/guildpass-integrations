@@ -3,13 +3,18 @@
  *
  * Live integration with guildpass-core access-api.
  *
- * SIWE changes:
- *  - Constructor now accepts an optional `token` (Bearer token from SIWE verify).
+ * Routes: all endpoints now target the current guildpass-core /v1/* structure.
+ * A lightweight response-mapping layer converts backend shapes into the
+ * frontend AccessApi interface so the rest of the app stays decoupled from
+ * backend internals.
+ *
+ * SIWE:
+ *  - Constructor accepts an optional `token` (Bearer token from SIWE verify).
  *  - Read-only methods remain unauthenticated (no header needed).
  *  - Mutation methods (assignRole, updatePolicy) send `Authorization: Bearer <token>`.
  *  - Throws `AuthError` (HTTP 401) so callers can detect an expired session and
  *    prompt the user to re-authenticate.
- *  - getNonce / siweVerify / siweLogout hit the new SIWE endpoints on the backend.
+ *  - getNonce / siweVerify / siweLogout hit the SIWE endpoints on the backend.
  */
 
 import {
@@ -23,6 +28,11 @@ import {
   Role,
   Session,
   SiweAuthSession,
+  // Raw backend shapes used for response mapping
+  BackendSession,
+  BackendMember,
+  BackendResource,
+  BackendPolicy,
 } from './types'
 
 const BASE = process.env.NEXT_PUBLIC_CORE_API_URL || 'http://localhost:4000'
@@ -68,6 +78,76 @@ async function getJson<T>(path: string, init?: RequestInit): Promise<T> {
   return res.json() as Promise<T>
 }
 
+// ── Response mappers ──────────────────────────────────────────────────────────
+// These convert backend shapes into the frontend types defined in types.ts.
+// If the backend ever aligns its field names with the frontend types, the
+// mapper becomes a no-op and can be removed without touching call sites.
+
+function mapCommunity(raw: BackendSession['community']): Community {
+  return {
+    id: raw.id,
+    name: raw.name,
+    description: raw.description,
+    tiers: raw.tiers ?? ['free', 'standard', 'pro'],
+  }
+}
+
+function mapMembership(raw: BackendMember): Membership {
+  return {
+    address: raw.address ?? raw.wallet_address,
+    tier: raw.tier ?? raw.membership_tier ?? 'free',
+    active: raw.active ?? raw.is_active ?? false,
+    expiresAt: raw.expiresAt ?? raw.expires_at,
+  }
+}
+
+function mapMemberProfile(raw: BackendMember, address: string): MemberProfile {
+  return {
+    address,
+    displayName: raw.displayName ?? raw.display_name ?? raw.username,
+    bio: raw.bio,
+    badges: raw.badges ?? [],
+  }
+}
+
+function mapMemberRow(raw: BackendMember): MemberRow {
+  return {
+    address: raw.address ?? raw.wallet_address,
+    roles: raw.roles ?? [],
+    tier: raw.tier ?? raw.membership_tier ?? 'free',
+    active: raw.active ?? raw.is_active ?? false,
+  }
+}
+
+function mapResource(raw: BackendResource): Resource {
+  return {
+    id: raw.id,
+    title: raw.title ?? raw.name,
+    description: raw.description,
+    minTier: raw.minTier ?? raw.min_tier,
+    roles: raw.roles,
+  }
+}
+
+function mapPolicy(raw: BackendPolicy): AccessPolicy {
+  return {
+    resourceId: raw.resourceId ?? raw.resource_id,
+    minTier: raw.minTier ?? raw.min_tier,
+    roles: raw.roles,
+  }
+}
+
+function mapSession(raw: BackendSession): Session {
+  return {
+    address: raw.address ?? raw.wallet_address,
+    roles: raw.roles ?? [],
+    membership: raw.membership ? mapMembership(raw.membership as BackendMember) : undefined,
+    community: raw.community ? mapCommunity(raw.community) : undefined,
+  }
+}
+
+// ── LiveAccessApi ─────────────────────────────────────────────────────────────
+
 export class LiveAccessApi implements AccessApi {
   /**
    * @param address  Connected wallet address (used for read-only session queries)
@@ -87,31 +167,49 @@ export class LiveAccessApi implements AccessApi {
   // ── Read-only ──────────────────────────────────────────────────────────────
 
   async getSession(): Promise<Session> {
-    return getJson<Session>(`/access-api/session?address=${this.address ?? ''}`)
+    const addr = this.address ? `?address=${encodeURIComponent(this.address)}` : ''
+    const raw = await getJson<BackendSession>(`/v1/session${addr}`)
+    return mapSession(raw)
   }
+
   async getCommunity(): Promise<Community> {
-    return getJson<Community>('/access-api/community')
+    const raw = await getJson<BackendSession['community']>('/v1/community')
+    return mapCommunity(raw)
   }
+
   async getMembership(address: string): Promise<Membership | null> {
-    return getJson<Membership | null>(`/access-api/members/${address}/membership`)
+    const raw = await getJson<BackendMember | null>(
+      `/v1/members/${encodeURIComponent(address)}/membership`,
+    )
+    return raw ? mapMembership(raw) : null
   }
+
   async getProfile(address: string): Promise<MemberProfile | null> {
-    return getJson<MemberProfile | null>(`/access-api/members/${address}/profile`)
+    const raw = await getJson<BackendMember | null>(
+      `/v1/members/${encodeURIComponent(address)}/profile`,
+    )
+    return raw ? mapMemberProfile(raw, address) : null
   }
+
   async listMembers(): Promise<MemberRow[]> {
-    return getJson<MemberRow[]>('/access-api/members')
+    const raw = await getJson<BackendMember[]>('/v1/members')
+    return raw.map(mapMemberRow)
   }
+
   async listResources(): Promise<Resource[]> {
-    return getJson<Resource[]>('/access-api/resources')
+    const raw = await getJson<BackendResource[]>('/v1/resources')
+    return raw.map(mapResource)
   }
+
   async listPolicies(): Promise<AccessPolicy[]> {
-    return getJson<AccessPolicy[]>('/access-api/policies')
+    const raw = await getJson<BackendPolicy[]>('/v1/policies')
+    return raw.map(mapPolicy)
   }
 
   // ── Authenticated mutations ────────────────────────────────────────────────
 
   async assignRole(address: string, role: Role): Promise<void> {
-    await getJson<void>(`/access-api/members/${address}/roles`, {
+    await getJson<void>(`/v1/members/${encodeURIComponent(address)}/roles`, {
       method: 'POST',
       headers: this.authHeaders(),
       body: JSON.stringify({ role }),
@@ -119,10 +217,14 @@ export class LiveAccessApi implements AccessApi {
   }
 
   async updatePolicy(policy: AccessPolicy): Promise<void> {
-    await getJson<void>('/access-api/policies', {
-      method: 'POST',
+    await getJson<void>(`/v1/policies/${encodeURIComponent(policy.resourceId)}`, {
+      method: 'PUT',
       headers: this.authHeaders(),
-      body: JSON.stringify(policy),
+      body: JSON.stringify({
+        resource_id: policy.resourceId,
+        min_tier: policy.minTier,
+        roles: policy.roles,
+      }),
     })
   }
 
@@ -130,10 +232,10 @@ export class LiveAccessApi implements AccessApi {
 
   /**
    * Fetch a one-time nonce for the address.
-   * Backend endpoint: POST /access-api/siwe/nonce  { address }
+   * Backend endpoint: POST /v1/auth/siwe/nonce  { address }
    */
   async getNonce(address: string): Promise<string> {
-    const data = await getJson<{ nonce: string }>('/access-api/siwe/nonce', {
+    const data = await getJson<{ nonce: string }>('/v1/auth/siwe/nonce', {
       method: 'POST',
       body: JSON.stringify({ address }),
     })
@@ -142,12 +244,12 @@ export class LiveAccessApi implements AccessApi {
 
   /**
    * Submit the signed EIP-4361 message to the backend for verification.
-   * Backend endpoint: POST /access-api/siwe/verify  { message, signature }
+   * Backend endpoint: POST /v1/auth/siwe/verify  { message, signature }
    * Response: { token, address, expiresAt }
    */
   async siweVerify(message: string, signature: string): Promise<SiweAuthSession> {
     const data = await getJson<{ token: string; address: string; expiresAt: string }>(
-      '/access-api/siwe/verify',
+      '/v1/auth/siwe/verify',
       {
         method: 'POST',
         body: JSON.stringify({ message, signature }),
@@ -158,10 +260,10 @@ export class LiveAccessApi implements AccessApi {
 
   /**
    * Invalidate the session on the backend.
-   * Backend endpoint: POST /access-api/siwe/logout
+   * Backend endpoint: POST /v1/auth/siwe/logout
    */
   async siweLogout(token: string): Promise<void> {
-    await getJson<void>('/access-api/siwe/logout', {
+    await getJson<void>('/v1/auth/siwe/logout', {
       method: 'POST',
       headers: { Authorization: `Bearer ${token}` },
     }).catch(() => {
