@@ -35,7 +35,22 @@ import {
   BackendPolicy,
 } from './types'
 
-const BASE = process.env.NEXT_PUBLIC_CORE_API_URL || 'http://localhost:4000'
+function getCoreApiUrl(): string {
+  const url = process.env.NEXT_PUBLIC_CORE_API_URL
+  if (url) return url
+
+  const isMockMode = process.env.NEXT_PUBLIC_MOCK_MODE === 'true'
+  if (!isMockMode) {
+    console.warn(
+      '⚠️ NEXT_PUBLIC_CORE_API_URL is missing in live mode.\n' +
+      'Falling back to http://localhost:4000.\n' +
+      'To silence this warning, set NEXT_PUBLIC_CORE_API_URL in your .env.local file.'
+)
+}
+return 'http://localhost:4000'
+}
+
+const BASE = getCoreApiUrl()
 
 /** Thrown when the backend returns HTTP 401 (expired / invalid session token). */
 export class AuthError extends Error {
@@ -89,10 +104,10 @@ function mapCommunity(raw: BackendSession['community']): Community {
   }
 
   return {
-    id: raw.id,
-    name: raw.name,
-    description: raw.description,
-    tiers: raw.tiers ?? ['free', 'standard', 'pro'],
+    id: raw?.id ?? '',
+    name: raw?.name ?? '',
+    description: raw?.description,
+    tiers: raw?.tiers ?? ['free', 'standard', 'pro'],
   }
 }
 
@@ -112,16 +127,16 @@ function mapMembership(raw: BackendMember): Membership {
   }
 }
 
-function mapMemberProfile(raw: BackendMember, address: string): MemberProfile {
+function mapMemberProfile(raw: any, address: string): MemberProfile {
   return {
     address,
-    displayName: raw.displayName ?? raw.display_name ?? raw.username,
-    bio: raw.bio,
-    badges: raw.badges ?? [],
+    displayName: raw?.displayName ?? raw?.display_name ?? raw?.username ?? '',
+    bio: raw?.bio,
+    badges: raw?.badges ?? [],
   }
 }
 
-function mapMemberRow(raw: BackendMember): MemberRow {
+function mapMemberRow(raw: any): MemberRow {
   return {
     address: requiredString(raw.address ?? raw.wallet_address, 'member address'),
     roles: raw.roles ?? [],
@@ -130,7 +145,7 @@ function mapMemberRow(raw: BackendMember): MemberRow {
   }
 }
 
-function mapResource(raw: BackendResource): Resource {
+function mapResource(raw: any): Resource {
   return {
     id: raw.id,
     title: raw.title ?? raw.name ?? raw.id,
@@ -140,7 +155,7 @@ function mapResource(raw: BackendResource): Resource {
   }
 }
 
-function mapPolicy(raw: BackendPolicy): AccessPolicy {
+function mapPolicy(raw: any): AccessPolicy {
   return {
     resourceId: requiredString(raw.resourceId ?? raw.resource_id, 'policy resourceId'),
     minTier: raw.minTier ?? raw.min_tier,
@@ -148,12 +163,12 @@ function mapPolicy(raw: BackendPolicy): AccessPolicy {
   }
 }
 
-function mapSession(raw: BackendSession): Session {
+function mapSession(raw: any): Session {
   return {
-    address: raw.address ?? raw.wallet_address,
-    roles: raw.roles ?? [],
-    membership: raw.membership ? mapMembership(raw.membership as BackendMember) : undefined,
-    community: raw.community ? mapCommunity(raw.community) : undefined,
+    address: raw?.address ?? raw?.wallet_address ?? '',
+    roles: raw?.roles ?? [],
+    membership: raw?.membership ? mapMembership(raw.membership) : undefined,
+    community: raw?.community ? mapCommunity(raw.community) : undefined,
   }
 }
 

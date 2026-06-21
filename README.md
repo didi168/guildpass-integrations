@@ -52,8 +52,10 @@ Open http://localhost:3000.
 
 ### Run against live guildpass-core
 
+By default, live mode assumes the backend is running at `http://localhost:4000`.
+
 ```bash
-# Set NEXT_PUBLIC_CORE_API_URL in .env.local first
+# Set NEXT_PUBLIC_CORE_API_URL in .env.local if your backend runs on a different port
 npm run dev
 ```
 
