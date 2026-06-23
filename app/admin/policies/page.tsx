@@ -6,6 +6,10 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
 import { getApi, type AccessPolicy } from '@/lib/api'
 import { AuthError } from '@/lib/api/live'
+import { useState } from 'react'
+import { FeatureGate } from '@/components/feature-gate'
+import { features } from '@/lib/features'
+import { LoadingState, ErrorState, EmptyState, DeniedState, safeErrorMessage } from '@/components/ui/api-states'
 import { applyOptimisticPolicy } from '@/lib/api/optimistic'
 import { AdminGuard } from '@/components/admin-guard'
 import { Badge } from '@/components/ui/badge'
@@ -31,12 +35,11 @@ function SessionExpiredBanner() {
   const { signIn, isSigningIn } = useSiweAuth()
 
   return (
-    <div
-      id="session-expired-banner-policies"
-      role="alert"
-      className="flex items-center justify-between rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:border-amber-700/40 dark:bg-amber-900/20 dark:text-amber-300"
-    >
-      <span>Your admin session has expired.</span>
+    <div id="session-expired-banner-policies">
+      <DeniedState
+        title="Admin session expired"
+        message="Your admin session has expired."
+        actions={
       <Button
         type="button"
         id="session-reauth-btn-policies"
@@ -48,6 +51,8 @@ function SessionExpiredBanner() {
       >
         {isSigningIn ? 'Signing…' : 'Re-authenticate'}
       </Button>
+        }
+      />
     </div>
   )
 }
@@ -178,7 +183,7 @@ export default function PoliciesPage() {
                 onRetry={() => refetch()}
               />
             ) : !policies?.length ? (
-              <EmptyState message="No resources configured." />
+              <EmptyState title="No resources configured" message="No access policies have been configured yet." />
             ) : (
               policies.map((policy) => {
                 const errors = formErrors[policy.resourceId]
@@ -263,6 +268,7 @@ export default function PoliciesPage() {
           </CardContent>
         </Card>
       </div>
-    </AdminGuard>
+      </AdminGuard>
+    </FeatureGate>
   )
 }
