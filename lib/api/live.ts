@@ -18,12 +18,9 @@ import {
 import { ApiError } from './errors'
 
 import { PolicyValidationError, validatePolicy } from '@/lib/validation/policy'
+import { config } from '@/lib/config'
 
-function getCoreApiUrl(): string {
-  return process.env.NEXT_PUBLIC_CORE_API_URL || 'http://localhost:4000'
-}
-
-const BASE = getCoreApiUrl()
+const BASE = config.apiUrl
 
 function createApiError(status: number, body?: ApiErrorBody): ApiError {
   const details =
