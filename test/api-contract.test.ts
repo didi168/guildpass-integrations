@@ -1,0 +1,405 @@
+import { describe, test, afterEach } from 'node:test'
+import * as assert from 'node:assert/strict'
+import { MockAccessApi } from '../lib/api/mock'
+import { LiveAccessApi } from '../lib/api/live'
+import { computeAccessDecision } from '../lib/api/access-decision'
+import type { MembershipTier, Session } from '../lib/api/types'
+import * as FIXTURES from './fixtures/live-api-responses'
+
+function normalize<T>(obj: T): T {
+  return JSON.parse(JSON.stringify(obj))
+}
+
+function stubFetch(responses: Record<string, unknown>) {
+  global.fetch = async (input: RequestInfo | URL) => {
+    const url = String(input)
+    for (const [pattern, data] of Object.entries(responses)) {
+      if (url.includes(pattern)) {
+        if (data === null || data === undefined) {
+          return new Response(null, { status: 204 }) as any
+        }
+        return new Response(JSON.stringify(data), { status: 200 }) as any
+      }
+    }
+    return new Response('Not Found', { status: 404 }) as any
+  }
+}
+
+afterEach(() => {
+  delete (global as any).fetch
+})
+
+// ── Session lookup ────────────────────────────────────────────────────────────
+
+describe('session lookup', () => {
+  test('MockAccessApi returns a valid Session', async () => {
+    const api = new MockAccessApi('0xabc')
+    const session = await api.getSession()
+
+    assert.equal(typeof session.address, 'string')
+    assert.ok(Array.isArray(session.roles))
+    assert.ok(session.community)
+    assert.equal(typeof session.community!.id, 'string')
+    assert.equal(typeof session.community!.name, 'string')
+    assert.ok(Array.isArray(session.community!.tiers))
+  })
+
+  test('LiveAccessApi returns a valid Session', async () => {
+    stubFetch({ '/v1/session': FIXTURES.session })
+    const api = new LiveAccessApi('0xabc')
+    const session = await api.getSession()
+
+    assert.equal(typeof session.address, 'string')
+    assert.ok(Array.isArray(session.roles))
+    assert.ok(session.community)
+    assert.equal(typeof session.community!.id, 'string')
+    assert.equal(typeof session.community!.name, 'string')
+    assert.ok(Array.isArray(session.community!.tiers))
+  })
+
+  test('both APIs produce the same Session view model', async () => {
+    const mockResult = await new MockAccessApi('0xabc').getSession()
+
+    stubFetch({ '/v1/session': FIXTURES.session })
+    const liveResult = await new LiveAccessApi('0xabc').getSession()
+
+    assert.deepStrictEqual(normalize(mockResult), normalize(liveResult))
+  })
+})
+
+// ── Membership lookup ─────────────────────────────────────────────────────────
+
+describe('membership lookup', () => {
+  test('MockAccessApi returns a valid Membership', async () => {
+    const api = new MockAccessApi()
+    const m = await api.getMembership('0xabc')
+
+    assert.ok(m)
+    assert.equal(typeof m.address, 'string')
+    assert.ok(['free', 'standard', 'pro'].includes(m.tier))
+    assert.equal(typeof m.active, 'boolean')
+  })
+
+  test('LiveAccessApi returns a valid Membership', async () => {
+    stubFetch({ '/v1/members/0xabc/membership': FIXTURES.membership })
+    const api = new LiveAccessApi()
+    const m = await api.getMembership('0xabc')
+
+    assert.ok(m)
+    assert.equal(typeof m.address, 'string')
+    assert.ok(['free', 'standard', 'pro'].includes(m.tier))
+    assert.equal(typeof m.active, 'boolean')
+  })
+
+  test('both APIs produce the same Membership view model', async () => {
+    const mockResult = await new MockAccessApi().getMembership('0xabc')
+
+    stubFetch({ '/v1/members/0xabc/membership': FIXTURES.membership })
+    const liveResult = await new LiveAccessApi().getMembership('0xabc')
+
+    assert.deepStrictEqual(normalize(mockResult), normalize(liveResult))
+  })
+})
+
+// ── Profile lookup ────────────────────────────────────────────────────────────
+
+describe('profile lookup', () => {
+  test('MockAccessApi returns a valid MemberProfile', async () => {
+    const api = new MockAccessApi()
+    const p = await api.getProfile('0xabc')
+
+    assert.ok(p)
+    assert.equal(typeof p.address, 'string')
+    assert.ok(Array.isArray(p.badges))
+  })
+
+  test('LiveAccessApi returns a valid MemberProfile', async () => {
+    stubFetch({ '/v1/members/0xabc/profile': FIXTURES.profile })
+    const api = new LiveAccessApi()
+    const p = await api.getProfile('0xabc')
+
+    assert.ok(p)
+    assert.equal(typeof p.address, 'string')
+    assert.ok(Array.isArray(p.badges))
+  })
+
+  test('both APIs produce the same MemberProfile view model', async () => {
+    const mockResult = await new MockAccessApi().getProfile('0xabc')
+
+    stubFetch({ '/v1/members/0xabc/profile': FIXTURES.profile })
+    const liveResult = await new LiveAccessApi().getProfile('0xabc')
+
+    assert.deepStrictEqual(normalize(mockResult), normalize(liveResult))
+  })
+})
+
+// ── Resource listing ──────────────────────────────────────────────────────────
+
+describe('resource listing', () => {
+  test('MockAccessApi returns valid Resource[]', async () => {
+    const api = new MockAccessApi()
+    const resources = await api.listResources()
+
+    assert.ok(Array.isArray(resources))
+    assert.ok(resources.length > 0)
+    for (const r of resources) {
+      assert.equal(typeof r.id, 'string')
+      assert.equal(typeof r.title, 'string')
+      assert.ok(Array.isArray(r.roles))
+    }
+  })
+
+  test('LiveAccessApi returns valid Resource[]', async () => {
+    stubFetch({ '/v1/resources': FIXTURES.resources })
+    const api = new LiveAccessApi()
+    const resources = await api.listResources()
+
+    assert.ok(Array.isArray(resources))
+    assert.ok(resources.length > 0)
+    for (const r of resources) {
+      assert.equal(typeof r.id, 'string')
+      assert.equal(typeof r.title, 'string')
+      assert.ok(Array.isArray(r.roles))
+    }
+  })
+
+  test('both APIs produce the same Resource[] view models', async () => {
+    const mockResult = await new MockAccessApi().listResources()
+
+    stubFetch({ '/v1/resources': FIXTURES.resources })
+    const liveResult = await new LiveAccessApi().listResources()
+
+    assert.deepStrictEqual(normalize(mockResult), normalize(liveResult))
+  })
+})
+
+// ── Policy listing ────────────────────────────────────────────────────────────
+
+describe('policy listing', () => {
+  test('MockAccessApi returns valid AccessPolicy[]', async () => {
+    const api = new MockAccessApi()
+    const policies = await api.listPolicies()
+
+    assert.ok(Array.isArray(policies))
+    assert.ok(policies.length > 0)
+    for (const p of policies) {
+      assert.equal(typeof p.resourceId, 'string')
+      assert.ok(Array.isArray(p.roles))
+    }
+  })
+
+  test('LiveAccessApi returns valid AccessPolicy[]', async () => {
+    stubFetch({ '/v1/policies': FIXTURES.policies })
+    const api = new LiveAccessApi()
+    const policies = await api.listPolicies()
+
+    assert.ok(Array.isArray(policies))
+    assert.ok(policies.length > 0)
+    for (const p of policies) {
+      assert.equal(typeof p.resourceId, 'string')
+      assert.ok(Array.isArray(p.roles))
+    }
+  })
+
+  test('both APIs produce the same AccessPolicy[] view models', async () => {
+    const mockResult = await new MockAccessApi().listPolicies()
+
+    stubFetch({ '/v1/policies': FIXTURES.policies })
+    const liveResult = await new LiveAccessApi().listPolicies()
+
+    assert.deepStrictEqual(normalize(mockResult), normalize(liveResult))
+  })
+})
+
+// ── Policy updates ────────────────────────────────────────────────────────────
+
+describe('policy updates', () => {
+  test('MockAccessApi accepts a valid policy update', async () => {
+    const api = new MockAccessApi()
+    await assert.doesNotReject(() =>
+      api.updatePolicy({ resourceId: 'alpha', minTier: 'pro' }),
+    )
+  })
+
+  test('LiveAccessApi accepts a valid policy update', async () => {
+    stubFetch({
+      '/v1/policies/alpha': null,
+    })
+    const api = new LiveAccessApi()
+    await assert.doesNotReject(() =>
+      api.updatePolicy({ resourceId: 'alpha', minTier: 'pro' }),
+    )
+  })
+
+  test('both APIs reject an invalid policy', async () => {
+    const mockApi = new MockAccessApi()
+    const liveApi = new LiveAccessApi()
+
+    await assert.rejects(() => mockApi.updatePolicy({ resourceId: '' }))
+    await assert.rejects(() => liveApi.updatePolicy({ resourceId: '' }))
+  })
+})
+
+// ── Access decisions ──────────────────────────────────────────────────────────
+
+describe('access decisions', () => {
+  test('MockAccessApi session produces correct allowed decision', async () => {
+    const api = new MockAccessApi('0xabc')
+    const session = await api.getSession()
+    const decision = computeAccessDecision(session, { minTier: 'free' })
+
+    assert.equal(decision.allowed, true)
+    assert.equal(typeof decision.reason, 'string')
+    assert.equal(typeof decision.checkedAt, 'string')
+  })
+
+  test('LiveAccessApi session produces correct allowed decision', async () => {
+    stubFetch({ '/v1/session': FIXTURES.session })
+    const api = new LiveAccessApi('0xabc')
+    const session = await api.getSession()
+    const decision = computeAccessDecision(session, { minTier: 'free' })
+
+    assert.equal(decision.allowed, true)
+    assert.equal(typeof decision.reason, 'string')
+    assert.equal(typeof decision.checkedAt, 'string')
+  })
+
+  test('both APIs produce identical access decisions for the same requirements', async () => {
+    const mockSession = await new MockAccessApi('0xabc').getSession()
+
+    stubFetch({ '/v1/session': FIXTURES.session })
+    const liveSession = await new LiveAccessApi('0xabc').getSession()
+
+    const requirements: { minTier?: MembershipTier } = { minTier: 'free' }
+    const mockDecision = computeAccessDecision(mockSession, requirements)
+    const liveDecision = computeAccessDecision(liveSession, requirements)
+
+    assert.deepStrictEqual(normalize(mockDecision), normalize(liveDecision))
+  })
+
+  test('denied decision is consistent across both APIs', async () => {
+    const mockSession = await new MockAccessApi('0xabc').getSession()
+
+    stubFetch({ '/v1/session': FIXTURES.session })
+    const liveSession = await new LiveAccessApi('0xabc').getSession()
+
+    const requirements: { minTier?: MembershipTier } = { minTier: 'pro' }
+    const mockDecision = computeAccessDecision(mockSession, requirements)
+    const liveDecision = computeAccessDecision(liveSession, requirements)
+
+    assert.equal(mockDecision.allowed, false)
+    assert.equal(liveDecision.allowed, false)
+    assert.deepStrictEqual(normalize(mockDecision), normalize(liveDecision))
+  })
+})
+
+// ── Member listing ────────────────────────────────────────────────────────────
+
+describe('member listing', () => {
+  test('MockAccessApi returns valid MemberRow[]', async () => {
+    const api = new MockAccessApi('0xabc')
+    await api.getMembership('0xabc')
+    const members = await api.listMembers()
+
+    assert.ok(Array.isArray(members))
+    for (const m of members) {
+      assert.equal(typeof m.address, 'string')
+      assert.ok(Array.isArray(m.roles))
+      assert.ok(['free', 'standard', 'pro'].includes(m.tier))
+      assert.equal(typeof m.active, 'boolean')
+    }
+  })
+
+  test('LiveAccessApi returns valid MemberRow[]', async () => {
+    stubFetch({ '/v1/members': FIXTURES.members })
+    const api = new LiveAccessApi()
+    const members = await api.listMembers()
+
+    assert.ok(Array.isArray(members))
+    for (const m of members) {
+      assert.equal(typeof m.address, 'string')
+      assert.ok(Array.isArray(m.roles))
+      assert.ok(['free', 'standard', 'pro'].includes(m.tier))
+      assert.equal(typeof m.active, 'boolean')
+    }
+  })
+
+  test('LiveAccessApi maps snake_case backend fields to camelCase view models', async () => {
+    stubFetch({ '/v1/members': FIXTURES.members })
+    const api = new LiveAccessApi()
+    const members = await api.listMembers()
+
+    const abc = members.find((m) => m.address === '0xabc')
+    assert.ok(abc)
+    assert.deepEqual(abc.roles, ['member'])
+    assert.equal(abc.tier, 'free')
+    assert.equal(abc.active, true)
+
+    const def = members.find((m) => m.address === '0xdef')
+    assert.ok(def)
+    assert.deepEqual(def.roles, ['member', 'admin'])
+    assert.equal(def.tier, 'standard')
+    assert.equal(def.active, true)
+  })
+})
+
+// ── SIWE endpoints ────────────────────────────────────────────────────────────
+
+describe('SIWE endpoints', () => {
+  test('MockAccessApi getNonce returns a hex string', async () => {
+    const api = new MockAccessApi('0xabc')
+    const nonce = await api.getNonce('0xabc')
+    assert.equal(typeof nonce, 'string')
+    assert.ok(nonce.length > 0)
+  })
+
+  test('LiveAccessApi getNonce returns a nonce string', async () => {
+    stubFetch({ '/v1/auth/siwe/nonce': FIXTURES.nonce })
+    const api = new LiveAccessApi()
+    const nonce = await api.getNonce('0xabc')
+    assert.equal(typeof nonce, 'string')
+    assert.equal(nonce, 'aabbccdd11223344')
+  })
+
+  test('MockAccessApi siweVerify returns a SiweAuthSession', async () => {
+    const api = new MockAccessApi('0xabc')
+    const result = await api.siweVerify('msg', 'sig')
+    assert.equal(result.isAuthenticated, true)
+    assert.equal(typeof result.token, 'string')
+    assert.equal(typeof result.address, 'string')
+    assert.equal(typeof result.expiresAt, 'string')
+  })
+
+  test('LiveAccessApi siweVerify returns a SiweAuthSession', async () => {
+    stubFetch({ '/v1/auth/siwe/verify': FIXTURES.siweVerify })
+    const api = new LiveAccessApi()
+    const result = await api.siweVerify('msg', 'sig')
+    assert.equal(result.isAuthenticated, true)
+    assert.equal(result.token, 'live-jwt-abcdef123456')
+    assert.equal(result.address, '0xabc')
+    assert.equal(typeof result.expiresAt, 'string')
+  })
+
+  test('both APIs return matching SiweAuthSession shapes', async () => {
+    const mockResult = await new MockAccessApi('0xabc').siweVerify('msg', 'sig')
+
+    stubFetch({ '/v1/auth/siwe/verify': FIXTURES.siweVerify })
+    const liveResult = await new LiveAccessApi('0xabc').siweVerify('msg', 'sig')
+
+    assert.equal(mockResult.isAuthenticated, liveResult.isAuthenticated)
+    assert.equal(typeof mockResult.token, typeof liveResult.token)
+    assert.equal(typeof mockResult.address, typeof liveResult.address)
+    assert.equal(typeof mockResult.expiresAt, typeof liveResult.expiresAt)
+  })
+
+  test('MockAccessApi siweLogout does not throw', async () => {
+    const api = new MockAccessApi()
+    await assert.doesNotReject(() => api.siweLogout('token'))
+  })
+
+  test('LiveAccessApi siweLogout does not throw', async () => {
+    stubFetch({ '/v1/auth/siwe/logout': null })
+    const api = new LiveAccessApi()
+    await assert.doesNotReject(() => api.siweLogout('token'))
+  })
+})
