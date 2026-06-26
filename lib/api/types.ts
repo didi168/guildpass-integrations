@@ -60,6 +60,12 @@ export interface Session {
   community?: Community
 }
 
+export interface WalletVerification {
+  verified: boolean
+  method?: string
+  checkedAt: string
+}
+
 export interface Resource {
   id: string
   title: string
