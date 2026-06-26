@@ -15,18 +15,16 @@ import {
   BackendMember,
   BackendResource,
   BackendPolicy,
+  WebhookEventLog,
 } from './types'
 import { ApiError } from './errors'
 
 import { PolicyValidationError, validatePolicy } from '@/lib/validation/policy'
+import { config } from '@/lib/config'
 
-function getCoreApiUrl(): string {
-  return process.env.NEXT_PUBLIC_CORE_API_URL || 'http://localhost:4000'
-}
+const BASE = config.apiUrl
 
-const BASE = getCoreApiUrl()
-
-function createApiError(status: number, body?: ApiErrorBody): ApiError {
+function createApiError(status: number, body?: ApiErrorBody, path?: string): ApiError {
   const details =
     body?.details && typeof body.details === 'object'
       ? body.details
@@ -37,6 +35,7 @@ function createApiError(status: number, body?: ApiErrorBody): ApiError {
       status,
       code: 'bad_request',
       safeMessage: body?.message || 'The request could not be processed.',
+      path,
       details,
     })
   }
@@ -46,6 +45,7 @@ function createApiError(status: number, body?: ApiErrorBody): ApiError {
       status,
       code: 'unauthorized',
       safeMessage: 'Session expired. Please sign in again.',
+      path,
     })
   }
 
@@ -54,6 +54,7 @@ function createApiError(status: number, body?: ApiErrorBody): ApiError {
       status,
       code: 'forbidden',
       safeMessage: 'You do not have permission to perform this action.',
+      path,
     })
   }
 
@@ -62,6 +63,7 @@ function createApiError(status: number, body?: ApiErrorBody): ApiError {
       status,
       code: 'not_found',
       safeMessage: 'The requested resource could not be found.',
+      path,
     })
   }
 
@@ -71,6 +73,7 @@ function createApiError(status: number, body?: ApiErrorBody): ApiError {
       code: 'validation_error',
       safeMessage:
         body?.message || 'Some of the submitted data is invalid.',
+      path,
       details,
     })
   }
@@ -80,6 +83,7 @@ function createApiError(status: number, body?: ApiErrorBody): ApiError {
       status,
       code: 'rate_limited',
       safeMessage: 'Too many requests. Please try again shortly.',
+      path,
       retryable: true,
     })
   }
@@ -90,6 +94,7 @@ function createApiError(status: number, body?: ApiErrorBody): ApiError {
       code: 'server_error',
       safeMessage:
         'The server could not complete the request. Please try again.',
+      path,
       retryable: true,
     })
   }
@@ -98,6 +103,7 @@ function createApiError(status: number, body?: ApiErrorBody): ApiError {
     status,
     code: 'unknown_error',
     safeMessage: body?.message || 'Request failed.',
+    path,
   })
 }
 
@@ -139,7 +145,7 @@ async function getJson<T>(path: string, init?: RequestInit): Promise<T> {
   }
 
   if (!res.ok) {
-    throw createApiError(res.status, await parseErrorBody(res))
+    throw createApiError(res.status, await parseErrorBody(res), path)
   }
 
   if (res.status === 204 || res.status === 205) {
@@ -266,6 +272,22 @@ function mapSession(raw: any): Session {
   }
 }
 
+function mapWebhookEvent(raw: any): WebhookEventLog {
+  return {
+    id: raw.id ?? '',
+    eventType: raw.eventType ?? raw.event_type ?? 'membership.created',
+    status: raw.status ?? 'pending',
+    timestamp: raw.timestamp ?? raw.created_at ?? new Date().toISOString(),
+    affectedIdentifier: raw.affectedIdentifier ?? raw.affected_identifier ?? '',
+    payloadSummary: {
+      network: raw.payloadSummary?.network ?? raw.payload_summary?.network,
+      txHash: raw.payloadSummary?.txHash ?? raw.payload_summary?.tx_hash,
+      tier: raw.payloadSummary?.tier ?? raw.payload_summary?.tier,
+      reason: raw.payloadSummary?.reason ?? raw.payload_summary?.reason,
+    },
+  }
+}
+
 // ── LiveAccessApi ─────────────────────────────────────────────────────────────
 
 export class LiveAccessApi implements AccessApi {
@@ -339,6 +361,16 @@ export class LiveAccessApi implements AccessApi {
   async listPolicies(): Promise<AccessPolicy[]> {
     const raw = await getJson<BackendPolicy[]>('/v1/policies')
     return raw.map(mapPolicy)
+  }
+
+  // ── Admin queries & mutations (require a valid SIWE token) ─────────────────
+
+  async listWebhookEvents(): Promise<WebhookEventLog[]> {
+    const raw = await getJson<any[]>('/v1/admin/events', {
+      method: 'GET',
+      headers: this.authHeaders(),
+    })
+    return raw.map(mapWebhookEvent)
   }
 
   async assignRole(address: string, role: Role): Promise<void> {

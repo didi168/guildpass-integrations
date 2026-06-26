@@ -5,17 +5,17 @@
  * All existing member/resource/policy data and mutation logic is preserved.
  *
  * SIWE additions:
- *  - getNonce()    — returns a random hex string (no real cryptography needed)
- *  - siweVerify()  — immediately returns a mock SiweAuthSession with a 1-hour
- *                    expiry WITHOUT verifying the signature. This lets developers
- *                    work in mock mode without MetaMask.
- *  - siweLogout()  — no-op that resolves immediately.
+ * - getNonce()    — returns a random hex string (no real cryptography needed)
+ * - siweVerify()  — immediately returns a mock SiweAuthSession with a 1-hour
+ * expiry WITHOUT verifying the signature. This lets developers
+ * work in mock mode without MetaMask.
+ * - siweLogout()  — no-op that resolves immediately.
  *
  * The mock MOCK_ADMIN_ADDRESS constant seeds a pre-authenticated admin for
  * convenience so you can simulate both unauthenticated and admin states:
- *   NEXT_PUBLIC_MOCK_ADMIN_ADDRESS=0xYourAddress
+ * NEXT_PUBLIC_MOCK_ADMIN_ADDRESS=0xYourAddress
  */
-import { PolicyValidationError, validatePolicy } from '@/lib/validation/policy'
+import { PolicyValidationError, validatePolicy } from '../validation/policy'
 import {
   AccessApi,
   AccessPolicy,
@@ -27,7 +27,7 @@ import {
   Role,
   Session,
   SiweAuthSession,
-  WalletVerification,
+  WebhookEventLog,
 } from './types'
 
 const community: Community = {
@@ -47,6 +47,33 @@ let policies: AccessPolicy[] = [
   { resourceId: 'alpha', minTier: 'standard' },
   { resourceId: 'pro-reports', minTier: 'pro' },
   { resourceId: 'mem-updates', minTier: 'free' },
+]
+
+const mockWebhookEvents: WebhookEventLog[] = [
+  {
+    id: "wh_01J1",
+    eventType: "membership.created",
+    status: "success",
+    timestamp: new Date(Date.now() - 1000 * 60 * 15).toISOString(),
+    affectedIdentifier: "0x71C...3A90",
+    payloadSummary: { network: "ethereum", txHash: "0xabc...123", tier: "pro" }
+  },
+  {
+    id: "wh_01J2",
+    eventType: "membership.expired",
+    status: "success",
+    timestamp: new Date(Date.now() - 1000 * 60 * 120).toISOString(),
+    affectedIdentifier: "0x94F...8B21",
+    payloadSummary: { reason: "Subscription term elapsed" }
+  },
+  {
+    id: "wh_01J3",
+    eventType: "tier.upgraded",
+    status: "failed",
+    timestamp: new Date(Date.now() - 1000 * 60 * 360).toISOString(),
+    affectedIdentifier: "0xF39...2441",
+    payloadSummary: { network: "ethereum", reason: "Gas limit hit execution revert" }
+  }
 ]
 
 const memberStore: Record<string, { membership: Membership; roles: Role[]; profile: MemberProfile }> = {}
@@ -128,14 +155,18 @@ export class MockAccessApi implements AccessApi {
   }
 
   async listResources(): Promise<Resource[]> {
-    return resources
+    return resources.map((r) => ({ ...r, roles: r.roles ?? [] }))
   }
 
   async listPolicies(): Promise<AccessPolicy[]> {
-    return policies
+    return policies.map((p) => ({ ...p, roles: p.roles ?? [] }))
   }
 
-  // ── Mutations (token is accepted but not validated in mock mode) ───────────
+  // ── Admin queries & mutations ──────────────────────────────────────────────
+
+  async listWebhookEvents(): Promise<WebhookEventLog[]> {
+    return new Promise((resolve) => setTimeout(() => resolve(mockWebhookEvents), 300))
+  }
 
   async assignRole(address: string, role: Role): Promise<void> {
     const data = ensureAddress(address)
@@ -196,4 +227,5 @@ export class MockAccessApi implements AccessApi {
       checkedAt: new Date().toISOString(),
     }
   }
+}
 }
