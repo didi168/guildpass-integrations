@@ -18,6 +18,16 @@ import {
   WebhookEventLog,
 } from './types'
 import { ApiError } from './errors'
+import {
+  validateCommunityResponse,
+  validateMemberProfileResponse,
+  validateMemberRowsResponse,
+  validateMembershipResponse,
+  validatePoliciesResponse,
+  validateResourcesResponse,
+  validateSessionResponse,
+  validateWebhookEventsResponse,
+} from './validators'
 
 /** Alias for ApiError — re-exported so admin pages can import AuthError from this module. */
 export { ApiError as AuthError } from './errors'
@@ -160,7 +170,7 @@ async function getJson<T>(path: string, init?: RequestInit): Promise<T> {
     return {} as T
   }
 
-  return JSON.parse(text) as T
+  return parseJsonResponse<T>(text, path)
 }
 
 async function getIntegrationJson<T>(path: string): Promise<T> {
@@ -195,7 +205,20 @@ async function getIntegrationJson<T>(path: string): Promise<T> {
     return {} as T
   }
 
-  return JSON.parse(text) as T
+  return parseJsonResponse<T>(text, path)
+}
+
+function parseJsonResponse<T>(text: string, path?: string): T {
+  try {
+    return JSON.parse(text) as T
+  } catch (cause) {
+    throw new ApiError({
+      code: 'validation_error',
+      safeMessage: 'Received an invalid response from the server.',
+      path,
+      cause,
+    })
+  }
 }
 
 // ── Response mappers ──────────────────────────────────────────────────────────
@@ -307,14 +330,18 @@ export class LiveAccessApi implements AccessApi {
     const addr = this.address
       ? `?address=${encodeURIComponent(this.address)}`
       : ''
-    const raw = await getJson<BackendSession>(`/v1/session${addr}`)
+    const path = `/v1/session${addr}`
+    const raw = await getJson<BackendSession>(path)
+    validateSessionResponse(raw, path)
     const session = mapSession(raw)
 
     if (this.address) {
       try {
+        const membershipPath = `/api/integration/membership?address=${encodeURIComponent(this.address)}`
         const integrationMembership = await getIntegrationJson<Membership | null>(
-          `/api/integration/membership?address=${encodeURIComponent(this.address)}`,
+          membershipPath,
         )
+        validateMembershipResponse(integrationMembership, membershipPath)
         if (integrationMembership) {
           session.membership = integrationMembership
         }
@@ -328,14 +355,17 @@ export class LiveAccessApi implements AccessApi {
   }
 
   async getCommunity(): Promise<Community> {
-    const raw = await getJson<BackendSession['community']>('/v1/community')
+    const path = '/v1/community'
+    const raw = await getJson<BackendSession['community']>(path)
+    validateCommunityResponse(raw, path)
     return mapCommunity(raw)
   }
 
   async getMembership(address: string): Promise<Membership | null> {
-    return await getIntegrationJson<Membership | null>(
-      `/api/integration/membership?address=${encodeURIComponent(address)}`,
-    )
+    const path = `/api/integration/membership?address=${encodeURIComponent(address)}`
+    const raw = await getIntegrationJson<Membership | null>(path)
+    validateMembershipResponse(raw, path)
+    return raw
   }
 
   async verifyWallet(address: string): Promise<WalletVerification> {
@@ -345,34 +375,42 @@ export class LiveAccessApi implements AccessApi {
   }
 
   async getProfile(address: string): Promise<MemberProfile | null> {
-    const raw = await getJson<BackendMember | null>(
-      `/v1/members/${encodeURIComponent(address)}/profile`,
-    )
+    const path = `/v1/members/${encodeURIComponent(address)}/profile`
+    const raw = await getJson<BackendMember | null>(path)
+    validateMemberProfileResponse(raw, path)
     return raw ? mapMemberProfile(raw, address) : null
   }
 
   async listMembers(): Promise<MemberRow[]> {
-    const raw = await getJson<BackendMember[]>('/v1/members')
+    const path = '/v1/members'
+    const raw = await getJson<BackendMember[]>(path)
+    validateMemberRowsResponse(raw, path)
     return raw.map(mapMemberRow)
   }
 
   async listResources(): Promise<Resource[]> {
-    const raw = await getJson<BackendResource[]>('/v1/resources')
+    const path = '/v1/resources'
+    const raw = await getJson<BackendResource[]>(path)
+    validateResourcesResponse(raw, path)
     return raw.map(mapResource)
   }
 
   async listPolicies(): Promise<AccessPolicy[]> {
-    const raw = await getJson<BackendPolicy[]>('/v1/policies')
+    const path = '/v1/policies'
+    const raw = await getJson<BackendPolicy[]>(path)
+    validatePoliciesResponse(raw, path)
     return raw.map(mapPolicy)
   }
 
   // ── Admin queries & mutations (require a valid SIWE token) ─────────────────
 
   async listWebhookEvents(): Promise<WebhookEventLog[]> {
-    const raw = await getJson<any[]>('/v1/admin/events', {
+    const path = '/v1/admin/events'
+    const raw = await getJson<any[]>(path, {
       method: 'GET',
       headers: this.authHeaders(),
     })
+    validateWebhookEventsResponse(raw, path)
     return raw.map(mapWebhookEvent)
   }
 
