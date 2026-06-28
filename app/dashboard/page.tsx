@@ -7,6 +7,7 @@ import { Badge } from '@/components/ui/badge'
 import Link from 'next/link'
 import { buttonVariants } from '@/components/ui/button'
 import { LoadingState, ErrorState, EmptyState, DeniedState, safeErrorMessage } from '@/components/ui/api-states'
+import { AddressText } from '@/components/wallet/address-text'
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
@@ -53,7 +54,7 @@ export default function DashboardPage() {
         <div className="text-right">
           <div className="text-sm">
             {isConnected ? (
-              <span className="text-muted-foreground">{address}</span>
+              <AddressText address={address} className="text-muted-foreground" />
             ) : (
               <span className="text-muted-foreground">Wallet not connected</span>
             )}
