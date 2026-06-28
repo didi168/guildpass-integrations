@@ -193,6 +193,7 @@ All live requests are sent to `NEXT_PUBLIC_CORE_API_URL` (default `http://localh
 | `GET` | `/v1/members/:address/profile` | — | Profile for address |
 | `GET` | `/v1/resources` | — | Available gated resources |
 | `GET` | `/v1/policies` | — | Access policies |
+| `GET` | `/v1/admin/events` | Bearer | Admin webhook event feed |
 | `POST` | `/v1/members/:address/roles` | Bearer | Assign role to member |
 | `PUT` | `/v1/policies/:resourceId` | Bearer | Update access policy |
 | `POST` | `/v1/auth/siwe/nonce` | — | Request SIWE nonce |
