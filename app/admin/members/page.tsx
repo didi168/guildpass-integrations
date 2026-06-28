@@ -12,7 +12,8 @@ import { AdminGuard } from '@/components/admin-guard'
 import { useSiweAuth } from '@/lib/wallet/providers'
 import { AuthError } from '@/lib/api/live'
 import { LoadingState, ErrorState, EmptyState, DeniedState, safeErrorMessage } from '@/components/ui/api-states'
-import { applyOptimisticRole, applyOptimisticRemoveRole } from '@/lib/api/optimistic'
+import { applyOptimisticRole } from '@/lib/api/optimistic'
+import { AddressText } from '@/components/wallet/address-text'
 
 type AssignRoleInput = {
   address: string
@@ -62,7 +63,7 @@ export default function MembersPage() {
   const [addr, setAddr] = useState('')
   const [role, setRole] = useState<Role>('member')
   const [pendingAssignment, setPendingAssignment] = useState<AssignRoleInput | null>(null)
-  const [successMessage, setSuccessMessage] = useState('')
+  const [successAssignment, setSuccessAssignment] = useState<AssignRoleInput | null>(null)
   const [rollbackMessage, setRollbackMessage] = useState('')
 
   const {
@@ -79,7 +80,7 @@ export default function MembersPage() {
       const previousMembers = qc.getQueryData<MemberRow[]>(['members'])
 
       setPendingAssignment(input)
-      setSuccessMessage('')
+      setSuccessAssignment(null)
       setRollbackMessage('')
       setSessionExpired(false)
 
@@ -90,7 +91,7 @@ export default function MembersPage() {
       return { previousMembers }
     },
     onSuccess: (_data, input) => {
-      setSuccessMessage(`Role "${input.role}" assigned to ${input.address}.`)
+      setSuccessAssignment(input)
       setAddr('')
       resetMutation()
     },
@@ -181,9 +182,14 @@ export default function MembersPage() {
                 {isPending ? 'Assigning…' : 'Assign'}
               </Button>
             </div>
-            {successMessage && (
+            {successAssignment && (
               <div className="text-sm text-green-700 dark:text-green-400" role="status">
-                {successMessage}
+                Role "{successAssignment.role}" saved for{' '}
+                <AddressText
+                  address={successAssignment.address}
+                  className="text-green-700 dark:text-green-400"
+                />
+                .
               </div>
             )}
             {rollbackMessage && (
@@ -221,7 +227,7 @@ export default function MembersPage() {
                     key={m.address}
                     className="flex items-center justify-between border rounded-md p-2"
                   >
-                    <div className="text-sm">{m.address}</div>
+                    <AddressText address={m.address} className="text-sm" />
                     <div className="flex items-center gap-2 text-xs text-muted-foreground">
                       <span>Tier: {m.tier}</span>
                       <div className="flex gap-1">

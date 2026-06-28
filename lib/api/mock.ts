@@ -36,6 +36,7 @@ import {
   SiweAuthSession,
   WalletVerification,
   WebhookEventLog,
+  WalletVerification,
 } from './types'
 import { ApiError } from './errors'
 
@@ -184,6 +185,16 @@ export class MockAccessApi implements AccessApi {
 
   async listPolicies(): Promise<AccessPolicy[]> {
     return policies.map((p) => ({ ...p, roles: p.roles ?? [] }))
+  }
+
+  async getResource(id: string): Promise<Resource | null> {
+    const r = resources.find((x) => x.id === id)
+    return r ? { ...r, roles: r.roles ?? [] } : null
+  }
+
+  async getPolicy(resourceId: string): Promise<AccessPolicy | null> {
+    const p = policies.find((x) => x.resourceId === resourceId)
+    return p ? { ...p, roles: p.roles ?? [] } : null
   }
 
   // ── Admin queries & mutations ──────────────────────────────────────────────

@@ -7,6 +7,7 @@ import { Badge } from '@/components/ui/badge'
 import Link from 'next/link'
 import { buttonVariants } from '@/components/ui/button'
 import { LoadingState, ErrorState, EmptyState, DeniedState, safeErrorMessage } from '@/components/ui/api-states'
+import { AddressText } from '@/components/wallet/address-text'
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
@@ -53,7 +54,7 @@ export default function DashboardPage() {
         <div className="text-right">
           <div className="text-sm">
             {isConnected ? (
-              <span className="text-muted-foreground">{address}</span>
+              <AddressText address={address} className="text-muted-foreground" />
             ) : (
               <span className="text-muted-foreground">Wallet not connected</span>
             )}
@@ -142,9 +143,11 @@ export default function DashboardPage() {
         <Section title="Gated Resources">
           <div className="space-y-2">
             <div className="text-sm">Explore resources based on your tier.</div>
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
               <Link href="/resources/alpha" className={buttonVariants()}>Alpha Docs</Link>
-              <Link href="/events/demo" className={buttonVariants({ variant: 'outline' })}>Demo Event</Link>
+              <Link href="/resources/pro-reports" className={buttonVariants({ variant: 'outline' })}>Pro Reports</Link>
+              <Link href="/resources/mem-updates" className={buttonVariants({ variant: 'outline' })}>Member Updates</Link>
+              <Link href="/events/demo" className={buttonVariants({ variant: 'secondary' })}>Demo Event</Link>
             </div>
           </div>
         </Section>

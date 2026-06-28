@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react'
 import { WebhookEventLog, WebhookEventStatus, WebhookEventType } from '@/lib/api/types'
 import { MockAccessApi } from '@/lib/api/mock' // Swappable depending on context instantiation
 import { EmptyState } from "@/components/ui/api-states"
+import { AddressText } from '@/components/wallet/address-text'
 
 export default function AdminEventsPage() {
   const [events, setEvents] = useState<WebhookEventLog[]>([])
@@ -125,7 +126,12 @@ export default function AdminEventsPage() {
                       {evt.eventType}
                     </td>
                     <td className="px-6 py-4 text-muted-foreground font-mono text-xs">
-                      {evt.affectedIdentifier}
+                      <AddressText
+                        address={evt.affectedIdentifier}
+                        label="Target address or resource"
+                        announceInvalid={false}
+                        className="text-muted-foreground"
+                      />
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
                       <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold tracking-wide uppercase ${
