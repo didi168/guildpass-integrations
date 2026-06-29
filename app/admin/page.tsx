@@ -1,12 +1,17 @@
-"use client"
+"use client";
 
-import { useState } from 'react'
-import { useQuery } from '@tanstack/react-query'
-import { WebhookEventLog, WebhookEventStatus, WebhookEventType } from '@/lib/api/types'
-import { MockAccessApi } from '@/lib/api/mock' // Swappable depending on context instantiation
-import { queryKeys } from '@/lib/query'
-import { EmptyState } from "@/components/ui/api-states"
-import { AddressText } from '@/components/wallet/address-text'
+import { useState } from "react";
+import { useQuery } from "@tanstack/react-query";
+import {
+  WebhookEventLog,
+  WebhookEventStatus,
+  WebhookEventType,
+} from "@/lib/api/types";
+import { MockAccessApi } from "@/lib/api/mock"; // Swappable depending on context instantiation
+import { queryKeys } from "@/lib/query";
+import { EmptyState } from "@/components/ui/api-states";
+import { Select } from "@/components/ui/select";
+import { AddressText } from "@/components/wallet/address-text";
 
 export default function AdminEventsPage() {
   const {
@@ -17,40 +22,42 @@ export default function AdminEventsPage() {
   } = useQuery({
     queryKey: queryKeys.webhookEvents.all,
     queryFn: async () => {
-      const api = new MockAccessApi()
-      return api.listWebhookEvents()
+      const api = new MockAccessApi();
+      return api.listWebhookEvents();
     },
-  })
+  });
 
-  const error = isError ? (queryError as Error).message || "Failed to load webhook events feed." : null
+  const error = isError
+    ? (queryError as Error).message || "Failed to load webhook events feed."
+    : null;
 
   // Filtering States
-  const [statusFilter, setStatusFilter] = useState<string>('all')
-  const [typeFilter, setTypeFilter] = useState<string>('all')
+  const [statusFilter, setStatusFilter] = useState<string>("all");
+  const [typeFilter, setTypeFilter] = useState<string>("all");
 
   const filteredEvents = events.filter((evt) => {
-    const matchStatus = statusFilter === 'all' || evt.status === statusFilter
-    const matchType = typeFilter === 'all' || evt.eventType === typeFilter
-    return matchStatus && matchType
-  })
+    const matchStatus = statusFilter === "all" || evt.status === statusFilter;
+    const matchType = typeFilter === "all" || evt.eventType === typeFilter;
+    return matchStatus && matchType;
+  });
 
   if (error) {
     return (
       <div className="p-6">
-        <EmptyState
-          title="Error loading log feed"
-          message={error}
-        />
+        <EmptyState title="Error loading log feed" message={error} />
       </div>
-    )
+    );
   }
 
   return (
-    <div className="space-y-6 p-6">
+    <div className="space-y-6 p-4 sm:p-6">
       <div className="flex flex-col gap-1">
-        <h1 className="text-2xl font-bold tracking-tight text-foreground">Ecosystem Webhook Logs</h1>
+        <h1 className="text-2xl font-bold tracking-tight text-foreground">
+          Ecosystem Webhook Logs
+        </h1>
         <p className="text-sm text-muted-foreground">
-          Operational telemetry stream for community subscription events, upgrades, and access switches.
+          Operational telemetry stream for community subscription events,
+          upgrades, and access switches.
         </p>
       </div>
 
@@ -59,9 +66,14 @@ export default function AdminEventsPage() {
       {/* Control Filter Bar */}
       <div className="flex flex-wrap gap-3 items-center">
         <div className="flex flex-col gap-1">
-          <label className="text-xs font-medium text-muted-foreground">Filter by Action</label>
-          <select 
-            className="border border-input rounded-md px-3 py-1.5 text-sm bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+          <label
+            htmlFor="event-type-filter"
+            className="text-xs font-medium text-muted-foreground"
+          >
+            Filter by Action
+          </label>
+          <Select
+            id="event-type-filter"
             value={typeFilter}
             onChange={(e) => setTypeFilter(e.target.value)}
           >
@@ -71,13 +83,18 @@ export default function AdminEventsPage() {
             <option value="membership.expired">membership.expired</option>
             <option value="tier.upgraded">tier.upgraded</option>
             <option value="policy.updated">policy.updated</option>
-          </select>
+          </Select>
         </div>
 
         <div className="flex flex-col gap-1">
-          <label className="text-xs font-medium text-muted-foreground">Filter by Telemetry Status</label>
-          <select 
-            className="border border-input rounded-md px-3 py-1.5 text-sm bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+          <label
+            htmlFor="event-status-filter"
+            className="text-xs font-medium text-muted-foreground"
+          >
+            Filter by Telemetry Status
+          </label>
+          <Select
+            id="event-status-filter"
             value={statusFilter}
             onChange={(e) => setStatusFilter(e.target.value)}
           >
@@ -85,7 +102,7 @@ export default function AdminEventsPage() {
             <option value="success">Success</option>
             <option value="failed">Failed</option>
             <option value="pending">Pending</option>
-          </select>
+          </Select>
         </div>
       </div>
 
@@ -114,7 +131,10 @@ export default function AdminEventsPage() {
               </thead>
               <tbody className="divide-y divide-border bg-transparent text-card-foreground">
                 {filteredEvents.map((evt) => (
-                  <tr key={evt.id} className="hover:bg-muted/50 transition-colors">
+                  <tr
+                    key={evt.id}
+                    className="hover:bg-muted/50 transition-colors"
+                  >
                     <td className="px-6 py-4 whitespace-nowrap text-muted-foreground font-mono text-xs">
                       {new Date(evt.timestamp).toLocaleString()}
                     </td>
@@ -130,11 +150,15 @@ export default function AdminEventsPage() {
                       />
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
-                      <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold tracking-wide uppercase ${
-                        evt.status === 'success' ? 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400' :
-                        evt.status === 'failed' ? 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400' : 
-                        'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-400'
-                      }`}>
+                      <span
+                        className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold tracking-wide uppercase ${
+                          evt.status === "success"
+                            ? "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400"
+                            : evt.status === "failed"
+                              ? "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400"
+                              : "bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-400"
+                        }`}
+                      >
                         {evt.status}
                       </span>
                     </td>
@@ -149,5 +173,5 @@ export default function AdminEventsPage() {
         </div>
       )}
     </div>
-  )
+  );
 }
