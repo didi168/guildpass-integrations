@@ -7,7 +7,8 @@ import { getApi } from "@/lib/api"
 import { queryKeys } from "@/lib/query"
 import { Gated, AccessDenied } from "@/components/gated"
 import { FeatureGate } from "@/components/feature-gate"
-import { EmptyState, LoadingState, ErrorState, safeErrorMessage } from "@/components/ui/api-states"
+import { LoadingState, ErrorState, safeErrorMessage } from "@/components/ui/api-states"
+import { ResourceContentRenderer } from "@/components/resources/resource-content-renderer"
 import { features } from "@/lib/features"
 
 export default function DynamicResourceDocs() {
@@ -80,10 +81,8 @@ export default function DynamicResourceDocs() {
             {resource.description ? `${resource.description}. ` : ""}
             This page is gated at {effectiveMinTier ? `${effectiveMinTier.charAt(0).toUpperCase()}${effectiveMinTier.slice(1)}` : "Standard"} tier and above.
           </p>
-          <EmptyState
-            title="Content unavailable"
-            message="Gated resource content will appear here when it is available."
-          />
+
+          <ResourceContentRenderer content={resource.content} />
         </div>
       </Gated>
     </FeatureGate>

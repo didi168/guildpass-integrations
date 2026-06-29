@@ -55,8 +55,29 @@ const DEFAULT_COMMUNITY: Community = {
 }
 
 const DEFAULT_RESOURCES: Resource[] = [
-  { id: 'alpha', title: 'Alpha Docs', description: 'Internal docs', minTier: 'standard' },
-  { id: 'pro-reports', title: 'Pro Reports', description: 'Advanced insight', minTier: 'pro' },
+  {
+    id: 'alpha',
+    title: 'Alpha Docs',
+    description: 'Internal docs',
+    minTier: 'standard',
+    content: [
+      { type: 'text', body: 'Welcome to the Alpha Docs. This is a restricted area.' },
+      { type: 'callout', title: 'Confidential', body: 'Do not share these documents outside the organization.', level: 'warning' },
+      { type: 'markdown', body: '### Getting Started\n\n1. Clone the repo\n2. Run `npm install`' },
+      { type: 'link', title: 'Internal Wiki', url: 'https://wiki.internal' }
+    ]
+  },
+  {
+    id: 'pro-reports',
+    title: 'Pro Reports',
+    description: 'Advanced insight',
+    minTier: 'pro',
+    content: [
+      { type: 'text', body: 'Quarterly Analysis Report' },
+      { type: 'video', url: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ', title: 'Market Overview' },
+      { type: 'file', title: 'Q3_Data.csv', url: '/files/q3_data.csv' }
+    ]
+  },
   { id: 'mem-updates', title: 'Member Updates', description: 'Community updates', minTier: 'free' },
 ]
 

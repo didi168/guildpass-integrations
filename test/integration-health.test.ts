@@ -16,6 +16,7 @@ describe('Integration gateway health checks (#84)', () => {
     process.env.INTEGRATION_API_KEY='***'
     const { isGatewayConfigured } = await import('@/lib/integration-client')
     expect(isGatewayConfigured()).toBe(true)
+  })
 
   it('isGatewayConfigured returns false when INTEGRATION_API_KEY is missing', async () => {
     delete process.env.INTEGRATION_API_KEY

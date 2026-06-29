@@ -74,6 +74,7 @@ export function mapResource(raw: any): Resource {
     description: raw.description,
     minTier: raw.minTier ?? raw.min_tier,
     roles: raw.roles ?? [],
+    content: raw.content,
   }
 }
 
