@@ -118,6 +118,8 @@ function createApiError(status: number, body?: ApiErrorBody, path?: string): Api
       status,
       code: 'server_error',
       safeMessage:
+        body?.message ||
+        body?.error ||
         'The server could not complete the request. Please try again.',
       path,
       retryable: true,
@@ -259,8 +261,11 @@ export class LiveAccessApi implements AccessApi {
     if (this.address) {
       const mPath = `/api/integration/membership?address=${encodeURIComponent(this.address)}`
       try {
-        const integrationMembership = await getIntegrationJson<BackendMember | null>(mPath)
-        validateMembershipResponse(integrationMembership, mPath)
+        const integrationPath = `/api/integration/membership?address=${encodeURIComponent(this.address)}`
+        const integrationMembership = await getIntegrationJson<BackendMember | null>(
+          integrationPath,
+        )
+        validateMembershipResponse(integrationMembership, integrationPath)
         if (integrationMembership) {
           session.membership = mapMembership(integrationMembership)
         }

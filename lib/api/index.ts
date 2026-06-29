@@ -16,4 +16,5 @@ export function getApi(address?: string, token?: string): AccessApi {
 }
 
 export * from './types'
+export * from './mappers'
 export { resetMockData, applyMockScenario }
