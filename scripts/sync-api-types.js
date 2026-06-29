@@ -114,6 +114,7 @@ export interface BackendResource {
   minTier?: MembershipTier
   min_tier?: MembershipTier
   roles?: Role[]
+  content?: ResourceContentBlock[]
 }
 
 export interface BackendPolicy {

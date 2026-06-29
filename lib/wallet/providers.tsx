@@ -149,11 +149,9 @@ export function SiweAuthProvider({ children }: { children: React.ReactNode }) {
   else if (session && timeLeft > 0) status = 'authenticated';
 
   return (
-    <QueryClientProvider client={queryClient}>
-      <SiweAuthContext.Provider value={{ session, status, timeLeft, login, logout }}>
-        {children}
-      </SiweAuthContext.Provider>
-    </QueryClientProvider>
+    <SiweAuthContext.Provider value={{ session, status, timeLeft, login, logout }}>
+      {children}
+    </SiweAuthContext.Provider>
   );
 }
 
@@ -161,4 +159,16 @@ export function useSiweAuth() {
   const context = useContext(SiweAuthContext);
   if (!context) throw new Error('useSiweAuth must be used within SiweAuthProvider');
   return context;
+}
+
+export function RootProviders({ children }: { children: React.ReactNode }) {
+  return (
+    <WagmiProvider config={wagmiConfig}>
+      <QueryClientProvider client={queryClient}>
+        <SiweAuthProvider>
+          {children}
+        </SiweAuthProvider>
+      </QueryClientProvider>
+    </WagmiProvider>
+  );
 }

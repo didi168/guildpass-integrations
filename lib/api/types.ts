@@ -37,12 +37,21 @@ export interface Session {
   community?: Community
 }
 
+export interface ResourceContentBlock {
+  type: string
+  body?: string
+  url?: string
+  title?: string
+  level?: string
+}
+
 export interface Resource {
   id: string
   title: string
   description?: string
   minTier?: MembershipTier
   roles?: Role[]
+  content?: ResourceContentBlock[]
 }
 
 export interface AccessPolicy {
@@ -174,6 +183,7 @@ export interface BackendResource {
   minTier?: MembershipTier
   min_tier?: MembershipTier
   roles?: Role[]
+  content?: ResourceContentBlock[]
 }
 
 export interface BackendPolicy {
