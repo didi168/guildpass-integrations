@@ -1,7 +1,7 @@
 'use client'
 import { useAccount } from 'wagmi'
 import { useQuery } from '@tanstack/react-query'
-import { getApi, type Membership, type Session, type WalletVerification } from '@/lib/api'
+import { getApi, type MemberProfile, type Membership, type Session, type WalletVerification } from '@/lib/api'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import Link from 'next/link'
@@ -38,6 +38,19 @@ export default function DashboardPage() {
   } = useQuery<WalletVerification>({
     queryKey: ['walletVerification', address],
     queryFn: () => getApi(address).verifyWallet(address as string),
+    enabled: !!address,
+    retry: 1,
+  })
+
+  const {
+    data: profile,
+    isLoading: profileLoading,
+    isError: profileIsError,
+    error: profileError,
+    refetch: refetchProfile,
+  } = useQuery<MemberProfile | null>({
+    queryKey: ['profile', address],
+    queryFn: () => getApi(address).getProfile(address as string),
     enabled: !!address,
     retry: 1,
   })
@@ -134,10 +147,31 @@ export default function DashboardPage() {
         </Section>
 
         <Section title="Badges">
-          <div className="flex flex-wrap gap-2">
-            <Badge>Early Member</Badge>
-            <Badge variant="outline">Placeholder</Badge>
-          </div>
+          {!address ? (
+            <DeniedState
+              title="Wallet connection required"
+              message="Connect your wallet to view your badges."
+            />
+          ) : profileLoading ? (
+            <LoadingState />
+          ) : profileIsError ? (
+            <ErrorState
+              title="Failed to load badges"
+              message={safeErrorMessage(profileError)}
+              onRetry={() => refetchProfile()}
+            />
+          ) : profile && profile.badges.length > 0 ? (
+            <div className="flex flex-wrap gap-2">
+              {profile.badges.map((badge) => (
+                <Badge key={badge}>{badge}</Badge>
+              ))}
+            </div>
+          ) : (
+            <EmptyState
+              title="No badges yet"
+              message="Complete community milestones to earn badges."
+            />
+          )}
         </Section>
 
         <Section title="Gated Resources">

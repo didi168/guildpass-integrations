@@ -107,7 +107,7 @@ function ensureAddress(addr?: string) {
       profile: {
         address: addr,
         displayName: `User ${addr.slice(0, 6)}`,
-        badges: [],
+        badges: ['Early Member', 'Beta Tester'],
       },
     }
   }
