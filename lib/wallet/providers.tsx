@@ -101,18 +101,38 @@ function SiweAuthProvider({ children }: PropsWithChildren) {
       setAuthSession(stored)
       setIsExpired(false)
     } else {
-      // Address changed (e.g. different MetaMask account) — clear stale session
+      // Address changed (e.g. different MetaMask account) — clear stale session and queries
       setAuthSession(null)
       setIsExpired(false)
+      if (stored) {
+        clearAuthSession()
+      }
+      // Clear all wallet-scoped and admin queries
+      queryClient.removeQueries({ queryKey: queryKeys.session.all })
+      queryClient.removeQueries({ queryKey: queryKeys.profile.all })
+      queryClient.removeQueries({ queryKey: queryKeys.walletVerification.all })
+      queryClient.removeQueries({ queryKey: accessKeys.all })
+      queryClient.removeQueries({ queryKey: queryKeys.members.all })
+      queryClient.removeQueries({ queryKey: queryKeys.policies.all })
+      queryClient.removeQueries({ queryKey: queryKeys.resources.all })
+      queryClient.removeQueries({ queryKey: queryKeys.webhookEvents.all })
     }
-  }, [address])
+  }, [address, queryClient])
 
   // Clear session and cached access decisions when wallet disconnects
   useEffect(() => {
     if (!address && authSession) {
       setAuthSession(null)
       clearAuthSession()
+      // Clear all wallet-scoped and admin queries
+      queryClient.removeQueries({ queryKey: queryKeys.session.all })
+      queryClient.removeQueries({ queryKey: queryKeys.profile.all })
+      queryClient.removeQueries({ queryKey: queryKeys.walletVerification.all })
       queryClient.removeQueries({ queryKey: accessKeys.all })
+      queryClient.removeQueries({ queryKey: queryKeys.members.all })
+      queryClient.removeQueries({ queryKey: queryKeys.policies.all })
+      queryClient.removeQueries({ queryKey: queryKeys.resources.all })
+      queryClient.removeQueries({ queryKey: queryKeys.webhookEvents.all })
     }
   }, [address, authSession, queryClient])
 
@@ -131,8 +151,15 @@ function SiweAuthProvider({ children }: PropsWithChildren) {
       } catch {
         // ignore
       }
+      // Clear all wallet-scoped and admin queries
       queryClient.removeQueries({ queryKey: queryKeys.session.all })
+      queryClient.removeQueries({ queryKey: queryKeys.profile.all })
+      queryClient.removeQueries({ queryKey: queryKeys.walletVerification.all })
       queryClient.removeQueries({ queryKey: accessKeys.all })
+      queryClient.removeQueries({ queryKey: queryKeys.members.all })
+      queryClient.removeQueries({ queryKey: queryKeys.policies.all })
+      queryClient.removeQueries({ queryKey: queryKeys.resources.all })
+      queryClient.removeQueries({ queryKey: queryKeys.webhookEvents.all })
     }
 
     window.addEventListener('siwe:invalidated', handler)
@@ -203,8 +230,15 @@ function SiweAuthProvider({ children }: PropsWithChildren) {
     setIsExpired(false)
     setError(null)
     disconnect()
+    // Clear all wallet-scoped and admin queries
     queryClient.removeQueries({ queryKey: queryKeys.session.all })
+    queryClient.removeQueries({ queryKey: queryKeys.profile.all })
+    queryClient.removeQueries({ queryKey: queryKeys.walletVerification.all })
     queryClient.removeQueries({ queryKey: accessKeys.all })
+    queryClient.removeQueries({ queryKey: queryKeys.members.all })
+    queryClient.removeQueries({ queryKey: queryKeys.policies.all })
+    queryClient.removeQueries({ queryKey: queryKeys.resources.all })
+    queryClient.removeQueries({ queryKey: queryKeys.webhookEvents.all })
   }, [authSession, address, disconnect, queryClient])
 
   /** Called by admin mutation error handlers when the backend returns 401. */
@@ -268,7 +302,13 @@ export function RootProviders({ children }: PropsWithChildren) {
   useEffect(() => {
     const handler = () => {
       queryClient.removeQueries({ queryKey: queryKeys.session.all })
+      queryClient.removeQueries({ queryKey: queryKeys.profile.all })
+      queryClient.removeQueries({ queryKey: queryKeys.walletVerification.all })
       queryClient.removeQueries({ queryKey: accessKeys.all })
+      queryClient.removeQueries({ queryKey: queryKeys.members.all })
+      queryClient.removeQueries({ queryKey: queryKeys.policies.all })
+      queryClient.removeQueries({ queryKey: queryKeys.resources.all })
+      queryClient.removeQueries({ queryKey: queryKeys.webhookEvents.all })
     }
     window.addEventListener('siwe:invalidated', handler)
     return () => window.removeEventListener('siwe:invalidated', handler)
