@@ -24,6 +24,7 @@ import {
   applyOptimisticRole,
   applyOptimisticRemoveRole,
 } from "@/lib/api/optimistic";
+import { roleRemovalConfirmationMessage } from "@/lib/api/role-removal";
 import { AddressText } from "@/components/wallet/address-text";
 import { isWalletAddress, normalizeAddress } from "@/lib/wallet/address";
 
@@ -202,6 +203,21 @@ export default function MembersPage() {
     },
   });
 
+  const requestRoleRemoval = (member: MemberRow, roleToRemove: Role) => {
+    const confirmationMessage = roleRemovalConfirmationMessage(
+      member.address,
+      roleToRemove,
+      member.roles,
+    );
+
+    if (confirmationMessage && !window.confirm(confirmationMessage)) return;
+
+    removeRoleMutation.mutate({
+      address: member.address,
+      role: roleToRemove,
+    });
+  };
+
   return (
     <AdminGuard>
       <div className="space-y-4">
@@ -281,7 +297,7 @@ export default function MembersPage() {
                 className="text-sm text-green-700 dark:text-green-400"
                 role="status"
               >
-                Role "{successAssignment.role}" saved for{" "}
+                Role &quot;{successAssignment.role}&quot; saved for{" "}
                 <AddressText
                   address={successAssignment.address}
                   className="text-green-700 dark:text-green-400"
@@ -343,12 +359,7 @@ export default function MembersPage() {
                             key={r}
                             type="button"
                             className="inline-flex items-center rounded-md border border-transparent bg-secondary px-2 py-0.5 text-xs font-semibold text-secondary-foreground transition-colors hover:bg-destructive hover:text-destructive-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
-                            onClick={() =>
-                              removeRoleMutation.mutate({
-                                address: m.address,
-                                role: r,
-                              })
-                            }
+                            onClick={() => requestRoleRemoval(m, r)}
                             aria-label={`Remove ${r} role from ${m.address}`}
                             title={`Remove ${r} role`}
                           >
