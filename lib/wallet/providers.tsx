@@ -33,18 +33,9 @@ import { SiweAuthSession } from '@/lib/api/types'
 import { clearAuthSession, loadAuthSession, storeAuthSession } from '@/lib/session'
 import { isApiError } from '@/lib/api/errors'
 import { accessKeys } from '@/lib/query'
+import { wagmiConfig } from '@/lib/wallet/config'
 
-// ── Wagmi config (unchanged) ──────────────────────────────────────────────────
-
-const wagmiConfig = createConfig({
-  chains: [mainnet, base, sepolia],
-  connectors: [injected()],
-  transports: {
-    [mainnet.id]: http(),
-    [base.id]: http(),
-    [sepolia.id]: http(),
-  },
-})
+// ── Wagmi config (fallback-aware transport, built by config.ts) ─────────────────
 
 // ── SIWE Auth Context ─────────────────────────────────────────────────────────
 
