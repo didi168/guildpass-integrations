@@ -56,8 +56,8 @@ export const resource = {
     { type: 'text', body: 'Welcome to the Alpha Docs. This is a restricted area.' },
     { type: 'callout', title: 'Confidential', body: 'Do not share these documents outside the organization.', level: 'warning' },
     { type: 'markdown', body: '### Getting Started\n\n1. Clone the repo\n2. Run `npm install`' },
-    { type: 'link', title: 'Internal Wiki', url: 'https://wiki.internal' }
-  ]
+    { type: 'link', title: 'Internal Wiki', url: 'https://wiki.internal' },
+  ],
 }
 
 export const resources = [
@@ -70,8 +70,8 @@ export const resources = [
     content: [
       { type: 'text', body: 'Quarterly Analysis Report' },
       { type: 'video', url: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ', title: 'Market Overview' },
-      { type: 'file', title: 'Q3_Data.csv', url: '/files/q3_data.csv' }
-    ]
+      { type: 'file', title: 'Q3_Data.csv', url: '/files/q3_data.csv' },
+    ],
   },
   {
     id: 'mem-updates',

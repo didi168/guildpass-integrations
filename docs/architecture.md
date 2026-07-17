@@ -106,6 +106,7 @@ flowchart TD
 | `lib/wallet/config.ts` | Builds the wagmi config from `NEXT_PUBLIC_WALLET_*` env vars |
 | `lib/config.ts` | Validates all `NEXT_PUBLIC_*` env vars at startup; throws `ConfigError` on bad values |
 | `lib/features.ts` | Feature-flag helpers; reads `NEXT_PUBLIC_FEATURE_*` env vars |
+| `lib/query/member-cache.ts` | Patches the cached `['members']` list in place after role mutations; falls back to a full invalidate when no usable cache entry exists (never a silent no-op) |
 | `components/admin-guard.tsx` | Three-state gate: `disconnected` → `unauthenticated` → `authenticated`; shows inline SIWE prompt |
 | `components/gated.tsx` | Fetches session + policies, computes access decision, renders children or `AccessDenied` |
 | `components/wallet/connect-button.tsx` | Three-state wallet button (disconnected / connected / authenticated) |

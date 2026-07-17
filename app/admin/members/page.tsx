@@ -2,7 +2,12 @@
 
 import { useAccount } from "wagmi";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { getApi, type MemberRow, type Role } from "@/lib/api";
+import {
+  getApi,
+  type MemberRow,
+  type MembershipTier,
+  type Role,
+} from "@/lib/api";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -12,7 +17,7 @@ import { useState } from "react";
 import { AdminGuard } from "@/components/admin-guard";
 import { useSiweAuth } from "@/lib/wallet/providers";
 import { AuthError } from "@/lib/api/live";
-import { queryKeys } from "@/lib/query";
+import { queryKeys, reconcileMemberRoleCache } from "@/lib/query";
 import {
   LoadingState,
   ErrorState,
@@ -104,7 +109,7 @@ export default function MembersPage() {
     setStatusFilter('all')
   }
 
-  const filteredMembers = members?.filter((m) => {
+  const filteredMembers = (members ?? []).filter((m) => {
     const matchesSearch = !searchQuery || m.address.toLowerCase().includes(searchQuery.toLowerCase())
     const matchesRole = roleFilter === 'all' || m.roles.includes(roleFilter)
     const matchesTier = tierFilter === 'all' || m.tier === tierFilter
@@ -145,12 +150,18 @@ export default function MembersPage() {
       return { previousMembers };
     },
     onSuccess: (_data, input) => {
+      reconcileMemberRoleCache(qc, {
+        address: input.address,
+        role: input.role,
+        action: "assign",
+      });
       setSuccessAssignment(input);
       setAddr("");
       resetMutation();
     },
     onError: (err: unknown, _input, context) => {
       qc.setQueryData(queryKeys.members.all, context?.previousMembers);
+      void qc.invalidateQueries({ queryKey: queryKeys.members.all });
       setRollbackMessage(`Change reverted: ${safeErrorMessage(err)}`);
       if (err instanceof AuthError) {
         setSessionExpired(true);
@@ -159,7 +170,6 @@ export default function MembersPage() {
     },
     onSettled: () => {
       setPendingAssignment(null);
-      qc.invalidateQueries({ queryKey: queryKeys.members.all });
     },
   });
 
@@ -186,11 +196,17 @@ export default function MembersPage() {
       return { previousMembers };
     },
     onSuccess: (_data, input) => {
+      reconcileMemberRoleCache(qc, {
+        address: input.address,
+        role: input.role,
+        action: "remove",
+      });
       setSuccessMessage(`Role "${input.role}" removed from ${input.address}.`);
       resetMutation();
     },
     onError: (err: unknown, _input, context) => {
       qc.setQueryData(queryKeys.members.all, context?.previousMembers);
+      void qc.invalidateQueries({ queryKey: queryKeys.members.all });
       setRollbackMessage(`Change reverted: ${safeErrorMessage(err)}`);
       if (err instanceof AuthError) {
         setSessionExpired(true);
@@ -199,7 +215,6 @@ export default function MembersPage() {
     },
     onSettled: () => {
       setPendingAssignment(null);
-      qc.invalidateQueries({ queryKey: queryKeys.members.all });
     },
   });
 
