@@ -1,14 +1,14 @@
 "use client";
 
 import { useAccount } from "wagmi";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { getApi, type MemberRow, type Role } from "@/lib/api";
+import { useQuery, useInfiniteQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { getApi, type MemberRow, type Role, type MembershipTier } from "@/lib/api";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
-import { useState } from "react";
+import { useState, useMemo, useRef, useEffect } from "react";
 import { AdminGuard } from "@/components/admin-guard";
 import { useSiweAuth } from "@/lib/wallet/providers";
 import { AuthError } from "@/lib/api/live";
@@ -38,7 +38,7 @@ type AssignRoleRollback = {
 };
 
 function SessionExpiredBanner() {
-  const { signIn, isSigningIn } = useSiweAuth();
+  const { signIn, isSigningIn } = useSiweAuth() as any;
   return (
     <div id="session-expired-banner">
       <DeniedState
@@ -61,21 +61,148 @@ function SessionExpiredBanner() {
   );
 }
 
+interface VirtualListProps<T> {
+  items: T[];
+  rowHeight: number;
+  height: number;
+  renderRow: (item: T, index: number) => React.ReactNode;
+  onScrollToBottom?: () => void;
+}
+
+function VirtualList<T>({
+  items,
+  rowHeight,
+  height,
+  renderRow,
+  onScrollToBottom,
+}: VirtualListProps<T>) {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [scrollTop, setScrollTop] = useState(0);
+
+  useEffect(() => {
+    const handleScroll = (e: Event) => {
+      const target = e.target as HTMLDivElement;
+      setScrollTop(target.scrollTop);
+
+      // Trigger scroll-to-bottom infinite load when 150px from bottom
+      if (
+        target.scrollHeight - target.scrollTop - target.clientHeight < 150
+      ) {
+        onScrollToBottom?.();
+      }
+    };
+
+    const el = containerRef.current;
+    if (el) {
+      el.addEventListener("scroll", handleScroll);
+    }
+    return () => {
+      if (el) {
+        el.removeEventListener("scroll", handleScroll);
+      }
+    };
+  }, [onScrollToBottom]);
+
+  const totalHeight = items.length * rowHeight;
+  const buffer = 5;
+  const startIndex = Math.max(0, Math.floor(scrollTop / rowHeight) - buffer);
+  const endIndex = Math.min(
+    items.length - 1,
+    Math.floor((scrollTop + height) / rowHeight) + buffer
+  );
+
+  const visibleItems = useMemo(() => {
+    const list: { item: T; index: number }[] = [];
+    for (let i = startIndex; i <= endIndex; i++) {
+      if (items[i] !== undefined) {
+        list.push({ item: items[i], index: i });
+      }
+    }
+    return list;
+  }, [items, startIndex, endIndex]);
+
+  return (
+    <div
+      ref={containerRef}
+      style={{ height, overflowY: "auto", position: "relative" }}
+      className="border rounded-md"
+    >
+      <div style={{ height: totalHeight, width: "100%", position: "relative" }}>
+        {visibleItems.map(({ item, index }) => (
+          <div
+            key={index}
+            style={{
+              position: "absolute",
+              top: index * rowHeight,
+              left: 0,
+              right: 0,
+              height: rowHeight,
+              padding: "4px 8px",
+            }}
+          >
+            {renderRow(item, index)}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 export default function MembersPage() {
   const { address } = useAccount();
-  const { authSession, markExpired } = useSiweAuth();
+  const { authSession, markExpired } = useSiweAuth() as any;
   const qc = useQueryClient();
   const [sessionExpired, setSessionExpired] = useState(false);
 
+  // Filter state
+  const [searchQuery, setSearchQuery] = useState('')
+  const [roleFilter, setRoleFilter] = useState<Role | 'all'>('all')
+  const [tierFilter, setTierFilter] = useState<MembershipTier | 'all'>('all')
+  const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'inactive'>('all')
+
+  const resetFilters = () => {
+    setSearchQuery('')
+    setRoleFilter('all')
+    setTierFilter('all')
+    setStatusFilter('all')
+  }
+
   const {
-    data: members,
+    data,
     isLoading,
     isError,
     error,
+    hasNextPage,
+    fetchNextPage,
+    isFetchingNextPage,
     refetch,
-  } = useQuery<MemberRow[]>({
-    queryKey: queryKeys.members.all,
-    queryFn: () => getApi(address).listMembers(),
+  } = useInfiniteQuery({
+    queryKey: [...queryKeys.members.all, { searchQuery }],
+    queryFn: async ({ pageParam }) => {
+      const api = getApi(address, authSession?.token);
+      const limit = 100;
+      const res = await api.listMembers({
+        cursor: pageParam,
+        limit,
+        filter: searchQuery || undefined,
+      });
+
+      if (Array.isArray(res)) {
+        return {
+          members: res,
+          nextCursor: undefined,
+          isFallback: true,
+        };
+      } else {
+        return {
+          members: res.members,
+          nextCursor: res.nextCursor,
+          isFallback: false,
+        };
+      }
+    },
+    initialPageParam: undefined as string | undefined,
+    getNextPageParam: (lastPage) => lastPage.nextCursor,
     retry: 1,
   });
 
@@ -91,30 +218,28 @@ export default function MembersPage() {
   const normalizedAddr = normalizeAddress(addr);
   const isValidAddress = isWalletAddress(normalizedAddr);
 
-  // Filter state
-  const [searchQuery, setSearchQuery] = useState('')
-  const [roleFilter, setRoleFilter] = useState<Role | 'all'>('all')
-  const [tierFilter, setTierFilter] = useState<MembershipTier | 'all'>('all')
-  const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'inactive'>('all')
+  const allFetchedMembers = useMemo(() => {
+    return data?.pages.flatMap((page) => page.members) ?? [];
+  }, [data]);
 
-  const resetFilters = () => {
-    setSearchQuery('')
-    setRoleFilter('all')
-    setTierFilter('all')
-    setStatusFilter('all')
-  }
+  const isFallbackMode = data?.pages[0]?.isFallback ?? false;
 
-  const filteredMembers = members?.filter((m) => {
-    const matchesSearch = !searchQuery || m.address.toLowerCase().includes(searchQuery.toLowerCase())
-    const matchesRole = roleFilter === 'all' || m.roles.includes(roleFilter)
-    const matchesTier = tierFilter === 'all' || m.tier === tierFilter
-    const matchesStatus =
-      statusFilter === 'all' ||
-      (statusFilter === 'active' && m.active) ||
-      (statusFilter === 'inactive' && !m.active)
+  const filteredMembers = useMemo(() => {
+    return allFetchedMembers.filter((m) => {
+      const matchesSearch =
+        !isFallbackMode ||
+        !searchQuery ||
+        m.address.toLowerCase().includes(searchQuery.toLowerCase());
+      const matchesRole = roleFilter === 'all' || m.roles.includes(roleFilter);
+      const matchesTier = tierFilter === 'all' || m.tier === tierFilter;
+      const matchesStatus =
+        statusFilter === 'all' ||
+        (statusFilter === 'active' && m.active) ||
+        (statusFilter === 'inactive' && !m.active);
 
-    return matchesSearch && matchesRole && matchesTier && matchesStatus
-  })
+      return matchesSearch && matchesRole && matchesTier && matchesStatus;
+    });
+  }, [allFetchedMembers, isFallbackMode, searchQuery, roleFilter, tierFilter, statusFilter]);
 
   const isFiltered = searchQuery || roleFilter !== 'all' || tierFilter !== 'all' || statusFilter !== 'all'
 
@@ -124,25 +249,36 @@ export default function MembersPage() {
     isError: mutateError,
     error: mutateErrorValue,
     reset: resetMutation,
-  } = useMutation<void, unknown, AssignRoleInput, AssignRoleRollback>({
+  } = useMutation<void, unknown, AssignRoleInput, { previousQueries?: [any, any][] }>({
     mutationFn: (input) =>
       getApi(address, authSession?.token).assignRole(input.address, input.role),
     onMutate: async (input) => {
       await qc.cancelQueries({ queryKey: queryKeys.members.all });
-      const previousMembers = qc.getQueryData<MemberRow[]>(
-        queryKeys.members.all,
-      );
+      const previousQueries = qc.getQueriesData({ queryKey: queryKeys.members.all });
 
       setPendingAssignment(input);
       setSuccessAssignment(null);
       setRollbackMessage("");
       setSessionExpired(false);
 
-      qc.setQueryData<MemberRow[]>(queryKeys.members.all, (currentMembers) =>
-        applyOptimisticRole(currentMembers, input.address, input.role),
-      );
+      qc.setQueriesData({ queryKey: queryKeys.members.all }, (old: any) => {
+        if (!old) return old;
+        if (Array.isArray(old)) {
+          return applyOptimisticRole(old, input.address, input.role);
+        }
+        if (old.pages) {
+          return {
+            ...old,
+            pages: old.pages.map((page: any) => ({
+              ...page,
+              members: applyOptimisticRole(page.members, input.address, input.role),
+            })),
+          };
+        }
+        return old;
+      });
 
-      return { previousMembers };
+      return { previousQueries };
     },
     onSuccess: (_data, input) => {
       setSuccessAssignment(input);
@@ -150,7 +286,11 @@ export default function MembersPage() {
       resetMutation();
     },
     onError: (err: unknown, _input, context) => {
-      qc.setQueryData(queryKeys.members.all, context?.previousMembers);
+      if (context?.previousQueries) {
+        for (const [queryKey, oldData] of context.previousQueries) {
+          qc.setQueryData(queryKey, oldData);
+        }
+      }
       setRollbackMessage(`Change reverted: ${safeErrorMessage(err)}`);
       if (err instanceof AuthError) {
         setSessionExpired(true);
@@ -167,30 +307,45 @@ export default function MembersPage() {
     void,
     unknown,
     AssignRoleInput,
-    AssignRoleRollback
+    { previousQueries?: [any, any][] }
   >({
     mutationFn: (input) =>
       getApi(address, authSession?.token).removeRole(input.address, input.role),
     onMutate: async (input) => {
       await qc.cancelQueries({ queryKey: queryKeys.members.all });
-      const previousMembers = qc.getQueryData<MemberRow[]>(
-        queryKeys.members.all,
-      );
+      const previousQueries = qc.getQueriesData({ queryKey: queryKeys.members.all });
       setPendingAssignment(input);
       setSuccessMessage("");
       setRollbackMessage("");
       setSessionExpired(false);
-      qc.setQueryData<MemberRow[]>(queryKeys.members.all, (currentMembers) =>
-        applyOptimisticRemoveRole(currentMembers, input.address, input.role),
-      );
-      return { previousMembers };
+      qc.setQueriesData({ queryKey: queryKeys.members.all }, (old: any) => {
+        if (!old) return old;
+        if (Array.isArray(old)) {
+          return applyOptimisticRemoveRole(old, input.address, input.role);
+        }
+        if (old.pages) {
+          return {
+            ...old,
+            pages: old.pages.map((page: any) => ({
+              ...page,
+              members: applyOptimisticRemoveRole(page.members, input.address, input.role),
+            })),
+          };
+        }
+        return old;
+      });
+      return { previousQueries };
     },
     onSuccess: (_data, input) => {
       setSuccessMessage(`Role "${input.role}" removed from ${input.address}.`);
       resetMutation();
     },
     onError: (err: unknown, _input, context) => {
-      qc.setQueryData(queryKeys.members.all, context?.previousMembers);
+      if (context?.previousQueries) {
+        for (const [queryKey, oldData] of context.previousQueries) {
+          qc.setQueryData(queryKey, oldData);
+        }
+      }
       setRollbackMessage(`Change reverted: ${safeErrorMessage(err)}`);
       if (err instanceof AuthError) {
         setSessionExpired(true);
@@ -216,6 +371,12 @@ export default function MembersPage() {
       address: member.address,
       role: roleToRemove,
     });
+  };
+
+  const handleScrollToBottom = () => {
+    if (hasNextPage && !isFetchingNextPage) {
+      fetchNextPage();
+    }
   };
 
   return (
@@ -338,42 +499,53 @@ export default function MembersPage() {
                 message={safeErrorMessage(error)}
                 onRetry={() => refetch()}
               />
-            ) : !members?.length ? (
+            ) : !allFetchedMembers?.length ? (
               <EmptyState
                 title="No members yet"
                 message="No members have been added to this community."
               />
             ) : (
               <div className="space-y-2">
-                {filteredMembers.map((m) => (
-                  <div
-                    key={m.address}
-                    className="flex flex-col gap-3 rounded-md border p-3 sm:flex-row sm:items-center sm:justify-between"
-                  >
-                    <AddressText address={m.address} className="text-sm" />
-                    <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-                      <span>Tier: {m.tier}</span>
-                      <div className="flex flex-wrap gap-1">
-                        {m.roles.map((r) => (
-                          <button
-                            key={r}
-                            type="button"
-                            className="inline-flex items-center rounded-md border border-transparent bg-secondary px-2 py-0.5 text-xs font-semibold text-secondary-foreground transition-colors hover:bg-destructive hover:text-destructive-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
-                            onClick={() => requestRoleRemoval(m, r)}
-                            aria-label={`Remove ${r} role from ${m.address}`}
-                            title={`Remove ${r} role`}
-                          >
-                            {r} <span aria-hidden="true">✕</span>
-                          </button>
-                        ))}
+                <VirtualList
+                  items={filteredMembers}
+                  rowHeight={88}
+                  height={500}
+                  onScrollToBottom={handleScrollToBottom}
+                  renderRow={(m) => (
+                    <div
+                      key={m.address}
+                      className="flex flex-col gap-3 rounded-md border p-3 sm:flex-row sm:items-center sm:justify-between h-full bg-card"
+                    >
+                      <AddressText address={m.address} className="text-sm" />
+                      <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                        <span>Tier: {m.tier}</span>
+                        <div className="flex flex-wrap gap-1">
+                          {m.roles.map((r) => (
+                            <button
+                              key={r}
+                              type="button"
+                              className="inline-flex items-center rounded-md border border-transparent bg-secondary px-2 py-0.5 text-xs font-semibold text-secondary-foreground transition-colors hover:bg-destructive hover:text-destructive-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+                              onClick={() => requestRoleRemoval(m, r)}
+                              aria-label={`Remove ${r} role from ${m.address}`}
+                              title={`Remove ${r} role`}
+                            >
+                              {r} <span aria-hidden="true">✕</span>
+                            </button>
+                          ))}
+                        </div>
+                        {pendingAssignment?.address.toLowerCase() ===
+                          m.address.toLowerCase() && (
+                          <Badge variant="warning">Saving</Badge>
+                        )}
                       </div>
-                      {pendingAssignment?.address.toLowerCase() ===
-                        m.address.toLowerCase() && (
-                        <Badge variant="warning">Saving</Badge>
-                      )}
                     </div>
+                  )}
+                />
+                {isFetchingNextPage && (
+                  <div className="text-center py-2 text-xs text-muted-foreground">
+                    Loading more members…
                   </div>
-                ))}
+                )}
               </div>
             )}
           </CardContent>

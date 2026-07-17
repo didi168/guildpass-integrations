@@ -437,13 +437,14 @@ describe('member listing', () => {
     const api = new LiveAccessApi()
     const members = await api.listMembers()
 
-    const abc = members.find((m) => m.address === '0xabc')
+    assert.ok(Array.isArray(members))
+    const abc = members.find((m: any) => m.address === '0xabc')
     assert.ok(abc)
     assert.deepEqual(abc.roles, ['member'])
     assert.equal(abc.tier, 'free')
     assert.equal(abc.active, true)
 
-    const def = members.find((m) => m.address === '0xdef')
+    const def = members.find((m: any) => m.address === '0xdef')
     assert.ok(def)
     assert.deepEqual(def.roles, ['member', 'admin'])
     assert.equal(def.tier, 'standard')

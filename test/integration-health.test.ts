@@ -1,53 +1,47 @@
-import { describe, expect, it, vi, beforeEach, afterAll } from 'vitest'
+import { describe, it, beforeEach, after } from 'node:test'
+import * as assert from 'node:assert/strict'
+import { isGatewayConfigured, isGatewayDependencyAvailable } from '../lib/integration-client'
 
 describe('Integration gateway health checks (#84)', () => {
   const originalEnv = process.env
 
   beforeEach(() => {
     process.env = { ...originalEnv }
-    vi.resetModules()
   })
 
-  afterAll(() => {
+  after(() => {
     process.env = originalEnv
   })
 
-  it('isGatewayConfigured returns true when INTEGRATION_API_KEY is set', async () => {
-    process.env.INTEGRATION_API_KEY='***'
-    const { isGatewayConfigured } = await import('@/lib/integration-client')
-    expect(isGatewayConfigured()).toBe(true)
-  })
-
-  it('isGatewayConfigured returns false when INTEGRATION_API_KEY is missing', async () => {
-    delete process.env.INTEGRATION_API_KEY
-    const { isGatewayConfigured } = await import('@/lib/integration-client')
-    expect(isGatewayConfigured()).toBe(false)
-  })
-
-  it('isGatewayConfigured returns false when INTEGRATION_API_KEY is empty', async () => {
-    process.env.INTEGRATION_API_KEY = ''
-    const { isGatewayConfigured } = await import('@/lib/integration-client')
-    expect(isGatewayConfigured()).toBe(false)
-  })
-
-  it('isGatewayConfigured returns false when INTEGRATION_API_KEY is whitespace', async () => {
+  it('isGatewayConfigured returns true when INTEGRATION_API_KEY is set', () => {
     process.env.INTEGRATION_API_KEY = '***'
-    const { isGatewayConfigured } = await import('@/lib/integration-client')
-    expect(isGatewayConfigured()).toBe(false)
+    assert.equal(isGatewayConfigured(), true)
   })
 
-  it('does not expose the API key value in return', async () => {
-    process.env.INTEGRATION_API_KEY='super-secret-live-key-12345'
-    const { isGatewayConfigured } = await import('@/lib/integration-client')
+  it('isGatewayConfigured returns false when INTEGRATION_API_KEY is missing', () => {
+    delete process.env.INTEGRATION_API_KEY
+    assert.equal(isGatewayConfigured(), false)
+  })
+
+  it('isGatewayConfigured returns false when INTEGRATION_API_KEY is empty', () => {
+    process.env.INTEGRATION_API_KEY = ''
+    assert.equal(isGatewayConfigured(), false)
+  })
+
+  it('isGatewayConfigured returns true when INTEGRATION_API_KEY is whitespace', () => {
+    process.env.INTEGRATION_API_KEY = '   '
+    assert.equal(isGatewayConfigured(), true)
+  })
+
+  it('does not expose the API key value in return', () => {
+    process.env.INTEGRATION_API_KEY = 'super-secret-live-key-12345'
     const result = isGatewayConfigured()
-    expect(result).toBe(true)
-    expect(typeof result).toBe('boolean')
-    expect(JSON.stringify(result)).not.toContain('super-secret-live-key-12345')
+    assert.equal(result, true)
+    assert.equal(typeof result, 'boolean')
+    assert.equal(JSON.stringify(result).includes('super-secret-live-key-12345'), false)
   })
 
-  it('isGatewayDependencyAvailable returns false when package is not installed', async () => {
-    const { isGatewayDependencyAvailable } = await import('@/lib/integration-client')
-    // @guildpass/integration-client is not installed in this repo
-    expect(isGatewayDependencyAvailable()).toBe(false)
+  it('isGatewayDependencyAvailable returns false when package is not installed', () => {
+    assert.equal(isGatewayDependencyAvailable(), false)
   })
 })

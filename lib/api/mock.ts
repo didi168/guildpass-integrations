@@ -32,6 +32,8 @@ import {
   MemberProfile,
   MemberRow,
   Membership,
+  MembershipTier,
+  PaginatedMembers,
   Resource,
   Role,
   Session,
@@ -115,6 +117,29 @@ const DEFAULT_WEBHOOK_EVENTS: WebhookEventLog[] = [
 ]
 
 const DEFAULT_MEMBER_STORE: Record<string, { membership: Membership; roles: Role[]; profile: MemberProfile }> = {}
+
+// Populate 50,000 synthetic members to exercise the scale scenario
+for (let i = 0; i < 50000; i++) {
+  const hex = (i + 1).toString(16).padStart(40, '0')
+  const address = `0x${hex}`
+  const tier: MembershipTier = i % 10 < 3 ? 'pro' : i % 10 < 7 ? 'standard' : 'free'
+  const active = i % 5 !== 0
+  const roles: Role[] = i === 0 ? ['admin'] : i % 50 === 0 ? ['moderator'] : ['member']
+  
+  DEFAULT_MEMBER_STORE[address] = {
+    membership: {
+      address,
+      tier,
+      active,
+    },
+    roles,
+    profile: {
+      address,
+      displayName: `Synthetic Member ${i + 1}`,
+      badges: i % 100 === 0 ? ['Early Adopter'] : [],
+    },
+  }
+}
 
 let community: Community = { ...DEFAULT_COMMUNITY }
 let resources: Resource[] = [...DEFAULT_RESOURCES]
@@ -312,13 +337,33 @@ export class MockAccessApi implements AccessApi {
     return data?.profile ?? null
   }
 
-  async listMembers(): Promise<MemberRow[]> {
-    return Object.values(memberStore).map((m) => ({
+  async listMembers(params?: { cursor?: string; limit?: number; filter?: string }): Promise<MemberRow[] | PaginatedMembers> {
+    let list = Object.values(memberStore).map((m) => ({
       address: m.membership.address,
       roles: m.roles,
       tier: m.membership.tier,
       active: m.membership.active,
     }))
+
+    if (!params) {
+      return list
+    }
+
+    if (params.filter) {
+      const f = params.filter.toLowerCase()
+      list = list.filter((m) => m.address.toLowerCase().includes(f))
+    }
+
+    const limit = params.limit ?? 100
+    const cursor = params.cursor ? parseInt(params.cursor, 10) : 0
+
+    const paginated = list.slice(cursor, cursor + limit)
+    const nextCursor = cursor + limit < list.length ? String(cursor + limit) : undefined
+
+    return {
+      members: paginated,
+      nextCursor,
+    }
   }
 
   async listResources(): Promise<Resource[]> {

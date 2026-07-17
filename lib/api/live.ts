@@ -6,6 +6,8 @@ import {
   MemberProfile,
   MemberRow,
   Membership,
+  MembershipTier,
+  PaginatedMembers,
   Resource,
   Role,
   Session,
@@ -305,11 +307,26 @@ export class LiveAccessApi implements AccessApi {
     return raw ? mapMemberProfile(raw, address) : null
   }
 
-  async listMembers(): Promise<MemberRow[]> {
-    const path = '/v1/members'
-    const raw = await getJson<BackendMember[]>(path)
-    validateMemberRowsResponse(raw, path)
-    return raw.map(mapMemberRow)
+  async listMembers(params?: { cursor?: string; limit?: number; filter?: string }): Promise<MemberRow[] | PaginatedMembers> {
+    const query = new URLSearchParams()
+    if (params?.cursor) query.append('cursor', params.cursor)
+    if (params?.limit !== undefined) query.append('limit', String(params.limit))
+    if (params?.filter) query.append('filter', params.filter)
+
+    const queryString = query.toString() ? `?${query.toString()}` : ''
+    const path = `/v1/members${queryString}`
+    const raw = await getJson<BackendMember[] | { members: BackendMember[]; nextCursor?: string }>(path)
+
+    if (Array.isArray(raw)) {
+      validateMemberRowsResponse(raw, path)
+      return raw.map(mapMemberRow)
+    } else {
+      validateMemberRowsResponse(raw.members, path)
+      return {
+        members: raw.members.map(mapMemberRow),
+        nextCursor: raw.nextCursor,
+      }
+    }
   }
 
   async listResources(): Promise<Resource[]> {
