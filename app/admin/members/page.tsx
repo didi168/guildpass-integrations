@@ -2,7 +2,12 @@
 
 import { useAccount } from "wagmi";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { getApi, type MemberRow, type Role } from "@/lib/api";
+import {
+  getApi,
+  type MemberRow,
+  type MembershipTier,
+  type Role,
+} from "@/lib/api";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -104,7 +109,7 @@ export default function MembersPage() {
     setStatusFilter('all')
   }
 
-  const filteredMembers = members?.filter((m) => {
+  const filteredMembers = (members ?? []).filter((m) => {
     const matchesSearch = !searchQuery || m.address.toLowerCase().includes(searchQuery.toLowerCase())
     const matchesRole = roleFilter === 'all' || m.roles.includes(roleFilter)
     const matchesTier = tierFilter === 'all' || m.tier === tierFilter

@@ -36,10 +36,12 @@ describe('lib/config.ts and feature flags', () => {
     process.env.NEXT_PUBLIC_CORE_API_URL = 'http://localhost:4000'
     const { config } = require('../lib/config')
     assert.equal(config.apiMode, 'live')
-    assert.equal(config.features.adminPolicies, true)
+    // Live-mode defaults are all false; adminPolicies/events/resources
+    // default to true only in mock mode (see lib/config.ts + CLAUDE.md).
+    assert.equal(config.features.adminPolicies, false)
     assert.equal(config.features.events, false)
     assert.equal(config.features.analytics, false)
-    assert.equal(config.features.resources, true)
+    assert.equal(config.features.resources, false)
     assert.equal(config.features.governance, false)
   })
 
@@ -65,13 +67,13 @@ describe('lib/config.ts and feature flags', () => {
     assert.equal(config.features.governance, true)
   })
 
-  test('malformed flag values (not "true" or "false") fall back to defaults', () => {
+  test('malformed flag values disable the flag; empty string falls back to default', () => {
     process.env.NEXT_PUBLIC_MOCK_MODE = 'true'
     process.env.NEXT_PUBLIC_FEATURE_EVENTS = 'invalid'
     process.env.NEXT_PUBLIC_FEATURE_RESOURCES = ''
     const { config } = require('../lib/config')
-    assert.equal(config.features.events, true) // should be default (mock mode)
-    assert.equal(config.features.resources, true) // should be default (mock mode)
+    assert.equal(config.features.events, false) // any value other than "true" disables
+    assert.equal(config.features.resources, true) // empty string → default (mock mode)
   })
 
   test('lib/features.ts exports config.features', () => {

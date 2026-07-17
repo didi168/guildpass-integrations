@@ -21,6 +21,7 @@
     "../components/feature-gate.tsx",
     "../components/wallet/address-text.tsx",
     "../lib/query/*.ts",
+    "../types/integration-client.d.ts",
     "./*.test.ts",
     "./*.test.tsx"
   ]
