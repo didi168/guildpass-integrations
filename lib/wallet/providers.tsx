@@ -1,20 +1,4 @@
-'use client'
-/**
- * lib/wallet/providers.tsx
- *
- * Global providers for the GuildPass frontend.
- *
- * SIWE additions:
- *  - SiweAuthContext exposes the authenticated session state, a signIn() function
- *    that walks the user through the EIP-4361 signing flow, and a logout() function
- *    that clears everything.
- *  - The context is initialised from sessionStorage on mount so the session
- *    survives page navigations within the same tab.
- *  - useSiweAuth() is the public hook for consuming the context.
- *
- * The SIWE message is built manually per EIP-4361 using only fields available
- * from wagmi/viem (no additional `siwe` npm package required).
- */
+'use client';
 
 import {
   createContext,
@@ -24,18 +8,19 @@ import {
   useEffect,
   useState,
 } from 'react'
-import { WagmiProvider, createConfig, http, injected, useSignMessage, useAccount, useDisconnect } from 'wagmi'
-import { mainnet, base, sepolia } from 'wagmi/chains'
-import { QueryClient, QueryClientProvider, useQueryClient } from '@tanstack/react-query'
+import { WagmiProvider, createConfig, useSignMessage, useAccount, useDisconnect } from 'wagmi'
+import { walletConfig } from '@/lib/wallet/config'
+import { QueryClient, QueryClientProvider, useQueryClient, QueryCache } from '@tanstack/react-query'
 import { getApi } from '@/lib/api'
 import { config } from '@/lib/config'
-import { SiweAuthSession } from '@/lib/api/types'
+import { SiweAuthSession, AdminSessionStatus } from '@/lib/api/types'
 import { clearAuthSession, loadAuthSession, storeAuthSession } from '@/lib/session'
 import { isApiError } from '@/lib/api/errors'
-import { accessKeys } from '@/lib/query'
-import { wagmiConfig } from '@/lib/wallet/config'
+import { accessKeys, queryKeys } from '@/lib/query'
 
-// ── Wagmi config (fallback-aware transport, built by config.ts) ─────────────────
+// ── Wagmi config ─────────────────────────────────────────────────────────────
+
+const wagmiConfig = createConfig(walletConfig)
 
 // ── SIWE Auth Context ─────────────────────────────────────────────────────────
 
@@ -57,220 +42,133 @@ export interface SiweAuthContextValue {
   markExpired: () => void
 }
 
-const SiweAuthContext = createContext<SiweAuthContextValue>({
-  authSession: null,
-  isAuthenticated: false,
-  sessionStatus: 'disconnected',
-  isSigningIn: false,
-  error: null,
-  signIn: async () => {},
-  logout: async () => {},
-  markExpired: () => {},
-})
-
-export function useSiweAuth(): SiweAuthContextValue {
-  return useContext(SiweAuthContext)
+interface SiweAuthContextType {
+  session: SiweSession | null;
+  status: 'disconnected' | 'unauthenticated' | 'authenticated' | 'expiring';
+  timeLeft: number;
+  login: () => Promise<void>;
+  logout: () => void;
 }
 
-// ── Internal provider (must be inside Wagmi + QueryClient providers) ──────────
+const SiweAuthContext = createContext<SiweAuthContextType | undefined>(undefined);
+const queryClient = new QueryClient();
 
-function SiweAuthProvider({ children }: PropsWithChildren) {
-  const { address, chain } = useAccount()
-  const { disconnect } = useDisconnect()
-  const { signMessageAsync } = useSignMessage()
-  const queryClient = useQueryClient()
+export function SiweAuthProvider({ children }: { children: React.ReactNode }) {
+  const { address, isConnected } = useAccount();
+  const { signMessageAsync } = useSignMessage();
+  const { disconnect } = useDisconnect();
+  const [session, setSession] = useState<SiweSession | null>(null);
+  const [timeLeft, setTimeLeft] = useState<number>(0);
 
-  const [authSession, setAuthSession] = useState<SiweAuthSession | null>(null)
-  const [isSigningIn, setIsSigningIn] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-  const [isExpired, setIsExpired] = useState(false)
-
-  // Restore persisted session on mount / address change
-  useEffect(() => {
-    const stored = loadAuthSession()
-    if (stored && stored.address === address) {
-      setAuthSession(stored)
-      setIsExpired(false)
-    } else {
-      // Address changed (e.g. different MetaMask account) — clear stale session
-      setAuthSession(null)
-      setIsExpired(false)
+  const logout = useCallback(() => {
+    setSession(null);
+    setTimeLeft(0);
+    if (typeof window !== 'undefined') {
+      sessionStorage.removeItem('siwe_session');
     }
-  }, [address])
+  }, []);
 
-  // Clear session and cached access decisions when wallet disconnects
   useEffect(() => {
-    if (!address && authSession) {
-      setAuthSession(null)
-      clearAuthSession()
-      queryClient.removeQueries({ queryKey: accessKeys.all })
-    }
-  }, [address, authSession, queryClient])
-
-  // Respond to external invalidation events (e.g. 401 detected globally)
-  useEffect(() => {
-    const handler = () => {
-      setAuthSession(null)
-      setError('Session expired. Please sign in again.')
-      try {
-        clearAuthSession()
-      } catch {
-        // ignore
+    if (typeof window !== 'undefined') {
+      const stored = sessionStorage.getItem('siwe_session');
+      if (stored) {
+        try {
+          const parsed = JSON.parse(stored) as SiweSession;
+          if (new Date(parsed.expiresAt).getTime() > Date.now()) {
+            setSession(parsed);
+          } else {
+            sessionStorage.removeItem('siwe_session');
+          }
+        } catch (_) {
+          sessionStorage.removeItem('siwe_session');
+        }
       }
-      try {
-        disconnect()
-      } catch {
-        // ignore
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!isConnected || (session && session.address !== address)) {
+      logout();
+    }
+  }, [address, isConnected, session, logout]);
+
+  useEffect(() => {
+    if (!session) {
+      setTimeLeft(0);
+      return;
+    }
+
+    const calculateTime = () => {
+      const diff = new Date(session.expiresAt).getTime() - Date.now();
+      const seconds = Math.max(0, Math.floor(diff / 1000));
+      setTimeLeft(seconds);
+      if (seconds <= 0) {
+        logout();
       }
-      queryClient.removeQueries({ queryKey: ['session'] })
-      queryClient.removeQueries({ queryKey: accessKeys.all })
-    }
+    };
 
-    window.addEventListener('siwe:invalidated', handler)
-    return () => window.removeEventListener('siwe:invalidated', handler)
-  }, [disconnect, queryClient])
+    calculateTime();
+    const interval = setInterval(calculateTime, 1000);
+    return () => clearInterval(interval);
+  }, [session, logout]);
 
-  const signIn = useCallback(async () => {
-    if (!address) {
-      setError('Connect your wallet before signing in.')
-      return
-    }
-    setIsSigningIn(true)
-    setError(null)
+  const login = async () => {
+    if (!address) return;
     try {
-      const api = getApi(address)
-      const nonce = await api.getNonce(address)
+      const nonceRes = await fetch('/v1/auth/siwe/nonce', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ address })
+      });
+      const { nonce } = await nonceRes.json();
 
-      // Build EIP-4361 message — compatible with the `siwe` package's format
-      const domain = config.siwe.domain
-      const statement = config.siwe.statement
-      const issuedAt = new Date().toISOString()
-      const chainId = chain?.id ?? 1
+      const message = `localhost:3000 wants you to sign in with your Ethereum account:\n${address}\n\nSIWE Session Authentication\n\nNonce: ${nonce}`;
+      const signature = await signMessageAsync({ message });
 
-      const siweMessage = [
-        `${domain} wants you to sign in with your Ethereum account:`,
-        address,
-        '',
-        statement,
-        '',
-        `URI: ${typeof window !== 'undefined' ? window.location.origin : `https://${domain}`}`,
-        `Version: 1`,
-        `Chain ID: ${chainId}`,
-        `Nonce: ${nonce}`,
-        `Issued At: ${issuedAt}`,
-      ].join('\n')
-
-      const signature = await signMessageAsync({ message: siweMessage })
-
-      const session = await api.siweVerify(siweMessage, signature)
-      storeAuthSession(session)
-      setAuthSession(session)
-      setIsExpired(false)
-      // Invalidate session queries so role-aware UI refreshes
-      await queryClient.invalidateQueries({ queryKey: ['session'] })
-    } catch (err: unknown) {
-      if (err instanceof Error && err.name === 'UserRejectedRequestError') {
-        setError('Signature request was rejected.')
-      } else if (err instanceof Error) {
-        setError(err.message)
-      } else {
-        setError('Sign-in failed. Please try again.')
+      const verifyRes = await fetch('/v1/auth/siwe/verify', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message, signature })
+      });
+      
+      const data = await verifyRes.json();
+      if (data.token) {
+        setSession(data);
+        if (typeof window !== 'undefined') {
+          sessionStorage.setItem('siwe_session', JSON.stringify(data));
+        }
       }
-    } finally {
-      setIsSigningIn(false)
+    } catch (err) {
+      console.error(err);
     }
-  }, [address, chain, signMessageAsync, queryClient])
+  };
 
-  const logout = useCallback(async () => {
-    if (authSession) {
-      try {
-        await getApi(address, authSession.token).siweLogout(authSession.token)
-      } catch {
-        // Best-effort server-side invalidation
-      }
-    }
-    clearAuthSession()
-    setAuthSession(null)
-    setIsExpired(false)
-    setError(null)
-    disconnect()
-    queryClient.removeQueries({ queryKey: ['session'] })
-    queryClient.removeQueries({ queryKey: accessKeys.all })
-  }, [authSession, address, disconnect, queryClient])
+  let status: SiweAuthContextType['status'] = 'unauthenticated';
+  if (!isConnected) status = 'disconnected';
+  else if (session && timeLeft <= 60 && timeLeft > 0) status = 'expiring';
+  else if (session && timeLeft > 0) status = 'authenticated';
 
-  /** Called by admin mutation error handlers when the backend returns 401. */
-  const markExpired = useCallback(() => {
-    clearAuthSession()
-    setAuthSession(null)
-    setIsExpired(true)
-  }, [])
-
-  // Derive the granular session status from existing state
-  const sessionStatus: AdminSessionStatus = !address
-    ? 'disconnected'
-    : isSigningIn
-    ? 'authenticating'
-    : isExpired
-    ? 'expired'
-    : authSession
-    ? 'authenticated'
-    : 'connected'
-
-  const value: SiweAuthContextValue = {
-    authSession,
-    isAuthenticated: !!authSession,
-    sessionStatus,
-    isSigningIn,
-    error,
-    signIn,
-    logout,
-    markExpired,
-  }
-
-  return <SiweAuthContext.Provider value={value}>{children}</SiweAuthContext.Provider>
+  return (
+    <SiweAuthContext.Provider value={{ session, status, timeLeft, login, logout }}>
+      {children}
+    </SiweAuthContext.Provider>
+  );
 }
 
-// ── Root providers (public export, used in app/layout.tsx) ───────────────────
+export function useSiweAuth() {
+  const context = useContext(SiweAuthContext);
+  if (!context) throw new Error('useSiweAuth must be used within SiweAuthProvider');
+  return context;
+}
 
-export function RootProviders({ children }: PropsWithChildren) {
-  const [queryClient] = useState(() =>
-    new QueryClient({
-      defaultOptions: {
-        queries: {
-          onError: (err: unknown) => {
-            try {
-              if (isApiError(err) && err.code === 'unauthorized') {
-                // Clear persisted session and cached queries on 401 so UI resets
-                clearAuthSession()
-                // best-effort: remove session-related cache
-                // Note: QueryClient instance is available as `queryClient` here,
-                // but removing queries from within the constructor callback is
-                // not supported — we'll remove them after creation below.
-              }
-            } catch {
-              // ignore
-            }
-          },
-        },
-      },
-    }),
-  )
-
-  // After creating the client, ensure session-related queries are cleared
-  // when we detect an unauthorized error via the onError hook above.
-  useEffect(() => {
-    const handler = () => {
-      queryClient.removeQueries({ queryKey: ['session'] })
-      queryClient.removeQueries({ queryKey: accessKeys.all })
-    }
-    window.addEventListener('siwe:invalidated', handler)
-    return () => window.removeEventListener('siwe:invalidated', handler)
-  }, [queryClient])
+export function RootProviders({ children }: { children: React.ReactNode }) {
   return (
     <WagmiProvider config={wagmiConfig}>
       <QueryClientProvider client={queryClient}>
-        <SiweAuthProvider>{children}</SiweAuthProvider>
+        <SiweAuthProvider>
+          {children}
+        </SiweAuthProvider>
       </QueryClientProvider>
     </WagmiProvider>
-  )
+  );
 }

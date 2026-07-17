@@ -1,49 +1,148 @@
-/**
- * lib/wallet/config.ts
- *
- * Builds wagmi chain configuration with fallback RPC transport.
- * Primary RPC URLs are read from environment variables:
- *   NEXT_PUBLIC_WALLET_RPC_MAINNET
- *   NEXT_PUBLIC_WALLET_RPC_BASE
- *   NEXT_PUBLIC_WALLET_RPC_SEPOLIA
- *
- * If a primary URL is set, the transport uses wagmi's fallback:
- *   primary → public default (via http() with no url).
- * If no primary URL is set, only the public default is used.
- */
-import { http, createConfig, fallback } from 'wagmi'
+import { http, injected } from 'wagmi'
 import { mainnet, base, sepolia } from 'wagmi/chains'
-import { injected } from 'wagmi/connectors'
+import type { Chain } from 'viem'
+import type { CreateConnectorFn } from 'wagmi'
+import { config as appConfig, ConfigError } from '@/lib/config'
 
-export type SupportedChainId = (typeof SUPPORTED_CHAINS)[number]['id']
+export const supportedWalletChains = {
+  mainnet,
+  base,
+  sepolia,
+} as const
 
-export const SUPPORTED_CHAINS = [mainnet, base, sepolia] as const
+type SupportedWalletChainName = keyof typeof supportedWalletChains
 
-function buildTransport(chainId: number, envKey: string) {
-  const primaryUrl = typeof process !== 'undefined'
-    ? process.env[envKey]
-    : undefined
+type SupportedWalletChain = (typeof supportedWalletChains)[SupportedWalletChainName]
 
-  const publicTransport = http()
+type WalletConnectorName = 'injected'
 
-  if (!primaryUrl) return publicTransport
-
-  return fallback([
-    http(primaryUrl, { timeout: 10_000 }),
-    publicTransport,
-  ])
+export interface WalletRuntimeConfig {
+  chains: readonly [SupportedWalletChain, ...SupportedWalletChain[]]
+  transports: Record<SupportedWalletChain['id'], ReturnType<typeof http>>
+  connectors: CreateConnectorFn[]
+  connectorNames: readonly WalletConnectorName[]
 }
 
-export function buildWagmiConfig() {
-  return createConfig({
-    chains: SUPPORTED_CHAINS,
-    connectors: [injected()],
-    transports: {
-      [mainnet.id]: buildTransport(mainnet.id, 'NEXT_PUBLIC_WALLET_RPC_MAINNET'),
-      [base.id]: buildTransport(base.id, 'NEXT_PUBLIC_WALLET_RPC_BASE'),
-      [sepolia.id]: buildTransport(sepolia.id, 'NEXT_PUBLIC_WALLET_RPC_SEPOLIA'),
-    },
+const DEFAULT_CHAIN_NAMES: SupportedWalletChainName[] = ['mainnet', 'base', 'sepolia']
+const SUPPORTED_CHAIN_NAMES = Object.keys(supportedWalletChains) as SupportedWalletChainName[]
+
+function env(name: string): string | undefined {
+  return process.env[name]
+}
+
+function isDevelopment(): boolean {
+  return process.env.NODE_ENV === 'development'
+}
+
+function splitCsv(value: string | undefined): string[] {
+  return value
+    ?.split(',')
+    .map((part) => part.trim())
+    .filter(Boolean) ?? []
+}
+
+function fail(message: string): never {
+  throw new ConfigError(message)
+}
+
+function validateBrowserUrl(value: string, envName: string): string {
+  try {
+    const url = new URL(value)
+    if (url.protocol !== 'http:' && url.protocol !== 'https:') {
+      fail(`${envName} must use http:// or https://, got "${value}"`)
+    }
+    return value
+  } catch (error) {
+    if (error instanceof ConfigError) throw error
+    fail(`${envName} must be a valid absolute RPC URL, got "${value}"`)
+  }
+}
+
+function parseChains(): readonly [SupportedWalletChain, ...SupportedWalletChain[]] {
+  const configuredNames = splitCsv(env('NEXT_PUBLIC_WALLET_CHAINS'))
+  const names = configuredNames.length > 0 ? configuredNames : DEFAULT_CHAIN_NAMES
+  const chains = names.map((name) => {
+    if (!SUPPORTED_CHAIN_NAMES.includes(name as SupportedWalletChainName)) {
+      fail(
+        [
+          `NEXT_PUBLIC_WALLET_CHAINS contains unsupported chain "${name}".`,
+          `Supported values: ${SUPPORTED_CHAIN_NAMES.join(', ')}.`,
+        ].join(' '),
+      )
+    }
+    return supportedWalletChains[name as SupportedWalletChainName]
+  })
+
+  const uniqueChains = chains.filter((chain, index, all) => all.findIndex((item) => item.id === chain.id) === index)
+
+  if (uniqueChains.length === 0) {
+    fail('NEXT_PUBLIC_WALLET_CHAINS must include at least one supported chain.')
+  }
+
+  return uniqueChains as [SupportedWalletChain, ...SupportedWalletChain[]]
+}
+
+function rpcEnvName(chain: Chain): string {
+  const name = SUPPORTED_CHAIN_NAMES.find((candidate) => supportedWalletChains[candidate].id === chain.id)
+  return `NEXT_PUBLIC_WALLET_RPC_${(name ?? String(chain.id)).toUpperCase()}`
+}
+
+function buildTransports(chains: readonly [SupportedWalletChain, ...SupportedWalletChain[]]): WalletRuntimeConfig['transports'] {
+  return chains.reduce<WalletRuntimeConfig['transports']>((transports, chain) => {
+    const envName = rpcEnvName(chain)
+    const rpcUrl = env(envName)
+    transports[chain.id] = rpcUrl ? http(validateBrowserUrl(rpcUrl, envName)) : http()
+    return transports
+  }, {} as WalletRuntimeConfig['transports'])
+}
+
+function parseConnectorNames(): readonly WalletConnectorName[] {
+  const configuredNames = splitCsv(env('NEXT_PUBLIC_WALLET_CONNECTORS'))
+  const names = configuredNames.length > 0 ? configuredNames : ['injected']
+
+  return names.map((name) => {
+    if (name !== 'injected') {
+      fail('NEXT_PUBLIC_WALLET_CONNECTORS currently supports only "injected".')
+    }
+    return name
   })
 }
 
-export const wagmiConfig = buildWagmiConfig()
+function buildConnectors(connectorNames: readonly WalletConnectorName[]): CreateConnectorFn[] {
+  return connectorNames.map((name) => {
+    switch (name) {
+      case 'injected':
+        return injected({ shimDisconnect: true })
+    }
+  })
+}
+
+function buildWalletConfig(): WalletRuntimeConfig {
+  try {
+    const chains = parseChains()
+    const connectorNames = parseConnectorNames()
+
+    return Object.freeze({
+      chains,
+      transports: Object.freeze(buildTransports(chains)),
+      connectors: Object.freeze(buildConnectors(connectorNames)),
+      connectorNames: Object.freeze(connectorNames),
+    })
+  } catch (error) {
+    if (appConfig.apiMode === 'mock' && !isDevelopment()) {
+      const chains = DEFAULT_CHAIN_NAMES.map((name) => supportedWalletChains[name]) as [
+        SupportedWalletChain,
+        ...SupportedWalletChain[],
+      ]
+      return Object.freeze({
+        chains,
+        transports: Object.freeze(buildTransports(chains)),
+        connectors: Object.freeze([injected({ shimDisconnect: true })]),
+        connectorNames: Object.freeze(['injected'] as const),
+      })
+    }
+    throw error
+  }
+}
+
+export const walletConfig = buildWalletConfig()

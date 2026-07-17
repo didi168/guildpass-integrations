@@ -17,7 +17,29 @@ import {
   BackendPolicy,
   WebhookEventLog,
 } from './types'
+import {
+  mapCommunity,
+  mapMembership,
+  mapMemberProfile,
+  mapMemberRow,
+  mapResource,
+  mapPolicy,
+  mapSession,
+  mapWebhookEvent,
+} from './mappers'
 import { ApiError } from './errors'
+import {
+  validateCommunityResponse,
+  validateMemberProfileResponse,
+  validateMemberRowsResponse,
+  validateMembershipResponse,
+  validatePoliciesResponse,
+  validatePolicyResponse,
+  validateResourceResponse,
+  validateResourcesResponse,
+  validateSessionResponse,
+  validateWebhookEventsResponse,
+} from './validators'
 
 /** Alias for ApiError — re-exported so admin pages can import AuthError from this module. */
 export { ApiError as AuthError } from './errors'
@@ -96,6 +118,8 @@ function createApiError(status: number, body?: ApiErrorBody, path?: string): Api
       status,
       code: 'server_error',
       safeMessage:
+        body?.message ||
+        body?.error ||
         'The server could not complete the request. Please try again.',
       path,
       retryable: true,
@@ -160,7 +184,7 @@ async function getJson<T>(path: string, init?: RequestInit): Promise<T> {
     return {} as T
   }
 
-  return JSON.parse(text) as T
+  return parseJsonResponse<T>(text, path)
 }
 
 async function getIntegrationJson<T>(path: string): Promise<T> {
@@ -195,101 +219,23 @@ async function getIntegrationJson<T>(path: string): Promise<T> {
     return {} as T
   }
 
-  return JSON.parse(text) as T
+  return parseJsonResponse<T>(text, path)
 }
 
-// ── Response mappers ──────────────────────────────────────────────────────────
-
-function mapCommunity(raw: BackendSession['community']): Community {
-  if (!raw) {
-    return {
-      id: 'unknown',
-      name: 'Unknown Community',
-      description: '',
-      tiers: ['free'],
-    }
-  }
-
-  return {
-    id: raw.id ?? '',
-    name: raw.name ?? '',
-    description: raw.description,
-    tiers: raw.tiers ?? ['free', 'standard', 'pro'],
+function parseJsonResponse<T>(text: string, path?: string): T {
+  try {
+    return JSON.parse(text) as T
+  } catch (cause) {
+    throw new ApiError({
+      code: 'validation_error',
+      safeMessage: 'Received an invalid response from the server.',
+      path,
+      cause,
+    })
   }
 }
 
-function mapMembership(raw: BackendMember): Membership {
-  return {
-    address: raw.address ?? raw.wallet_address ?? '',
-    tier: raw.tier ?? raw.membership_tier ?? 'free',
-    active: raw.active ?? raw.is_active ?? false,
-    expiresAt: raw.expiresAt ?? raw.expires_at,
-  }
-}
-
-function mapMemberProfile(raw: any, address: string): MemberProfile {
-  return {
-    address,
-    displayName:
-      raw.displayName ?? raw.display_name ?? raw.username ?? 'Unknown',
-    bio: raw.bio,
-    badges: raw.badges ?? [],
-  }
-}
-
-function mapMemberRow(raw: any): MemberRow {
-  return {
-    address: raw.address ?? raw.wallet_address ?? '',
-    roles: raw.roles ?? [],
-    tier: raw.tier ?? raw.membership_tier ?? 'free',
-    active: raw.active ?? raw.is_active ?? false,
-  }
-}
-
-function mapResource(raw: any): Resource {
-  return {
-    id: raw.id ?? '',
-    title: raw.title ?? raw.name ?? 'Untitled',
-    description: raw.description,
-    minTier: raw.minTier ?? raw.min_tier,
-    roles: raw.roles ?? [],
-  }
-}
-
-function mapPolicy(raw: any): AccessPolicy {
-  return {
-    resourceId: raw.resourceId ?? raw.resource_id ?? '',
-    minTier: raw.minTier ?? raw.min_tier ?? 'free',
-    roles: raw.roles ?? [],
-  }
-}
-
-function mapSession(raw: any): Session {
-  return {
-    address: raw.address ?? raw.wallet_address ?? '',
-    roles: raw.roles ?? [],
-    membership: raw.membership
-      ? mapMembership(raw.membership as BackendMember)
-      : undefined,
-    community: raw.community ? mapCommunity(raw.community) : undefined,
-  }
-}
-
-function mapWebhookEvent(raw: any): WebhookEventLog {
-  return {
-    id: raw.id ?? '',
-    eventType: raw.eventType ?? raw.event_type ?? 'membership.created',
-    status: raw.status ?? 'pending',
-    timestamp: raw.timestamp ?? raw.created_at ?? new Date().toISOString(),
-    affectedIdentifier: raw.affectedIdentifier ?? raw.affected_identifier ?? '',
-    payloadSummary: {
-      network: raw.payloadSummary?.network ?? raw.payload_summary?.network,
-      txHash: raw.payloadSummary?.txHash ?? raw.payload_summary?.tx_hash,
-      tier: raw.payloadSummary?.tier ?? raw.payload_summary?.tier,
-      reason: raw.payloadSummary?.reason ?? raw.payload_summary?.reason,
-    },
-  }
-}
+// ── Response mappers are now in ./mappers ─────────────────────────────────────
 
 // ── LiveAccessApi ─────────────────────────────────────────────────────────────
 
@@ -307,16 +253,21 @@ export class LiveAccessApi implements AccessApi {
     const addr = this.address
       ? `?address=${encodeURIComponent(this.address)}`
       : ''
-    const raw = await getJson<BackendSession>(`/v1/session${addr}`)
+    const path = `/v1/session${addr}`
+    const raw = await getJson<BackendSession>(path)
+    validateSessionResponse(raw, path)
     const session = mapSession(raw)
 
     if (this.address) {
+      const mPath = `/api/integration/membership?address=${encodeURIComponent(this.address)}`
       try {
-        const integrationMembership = await getIntegrationJson<Membership | null>(
-          `/api/integration/membership?address=${encodeURIComponent(this.address)}`,
+        const integrationPath = `/api/integration/membership?address=${encodeURIComponent(this.address)}`
+        const integrationMembership = await getIntegrationJson<BackendMember | null>(
+          integrationPath,
         )
+        validateMembershipResponse(integrationMembership, integrationPath)
         if (integrationMembership) {
-          session.membership = integrationMembership
+          session.membership = mapMembership(integrationMembership)
         }
       } catch {
         // If the integration gateway is unavailable, retain the membership data
@@ -328,14 +279,17 @@ export class LiveAccessApi implements AccessApi {
   }
 
   async getCommunity(): Promise<Community> {
-    const raw = await getJson<BackendSession['community']>('/v1/community')
+    const path = '/v1/community'
+    const raw = await getJson<BackendSession['community']>(path)
+    validateCommunityResponse(raw, path)
     return mapCommunity(raw)
   }
 
   async getMembership(address: string): Promise<Membership | null> {
-    return await getIntegrationJson<Membership | null>(
+    const raw = await getIntegrationJson<BackendMember | null>(
       `/api/integration/membership?address=${encodeURIComponent(address)}`,
     )
+    return raw ? mapMembership(raw) : null
   }
 
   async verifyWallet(address: string): Promise<WalletVerification> {
@@ -345,34 +299,80 @@ export class LiveAccessApi implements AccessApi {
   }
 
   async getProfile(address: string): Promise<MemberProfile | null> {
-    const raw = await getJson<BackendMember | null>(
-      `/v1/members/${encodeURIComponent(address)}/profile`,
-    )
+    const path = `/v1/members/${encodeURIComponent(address)}/profile`
+    const raw = await getJson<BackendMember | null>(path)
+    validateMemberProfileResponse(raw, path)
     return raw ? mapMemberProfile(raw, address) : null
   }
 
   async listMembers(): Promise<MemberRow[]> {
-    const raw = await getJson<BackendMember[]>('/v1/members')
+    const path = '/v1/members'
+    const raw = await getJson<BackendMember[]>(path)
+    validateMemberRowsResponse(raw, path)
     return raw.map(mapMemberRow)
   }
 
   async listResources(): Promise<Resource[]> {
-    const raw = await getJson<BackendResource[]>('/v1/resources')
+    const path = '/v1/resources'
+    const raw = await getJson<BackendResource[]>(path)
+    validateResourcesResponse(raw, path)
     return raw.map(mapResource)
   }
 
   async listPolicies(): Promise<AccessPolicy[]> {
-    const raw = await getJson<BackendPolicy[]>('/v1/policies')
+    const path = '/v1/policies'
+    const raw = await getJson<BackendPolicy[]>(path)
+    validatePoliciesResponse(raw, path)
     return raw.map(mapPolicy)
+  }
+
+  async getResource(id: string): Promise<Resource | null> {
+    const path = `/v1/resources/${encodeURIComponent(id)}`
+    try {
+      const raw = await getJson<BackendResource>(path)
+      if (raw && Object.keys(raw).length > 0) {
+        validateResourceResponse(raw, path)
+        return mapResource(raw)
+      }
+    } catch (err) {
+      if (!(err instanceof ApiError && err.status === 404)) {
+        throw err
+      }
+    }
+
+    // Fallback for older backends or if direct lookup returned empty/404
+    const list = await this.listResources()
+    return list.find((r) => r.id === id) ?? null
+  }
+
+  async getPolicy(resourceId: string): Promise<AccessPolicy | null> {
+    const path = `/v1/policies/${encodeURIComponent(resourceId)}`
+    try {
+      const raw = await getJson<BackendPolicy>(path)
+      if (raw && Object.keys(raw).length > 0) {
+        validatePolicyResponse(raw, path)
+        return mapPolicy(raw)
+      }
+    } catch (err) {
+      if (!(err instanceof ApiError && err.status === 404)) {
+        throw err
+      }
+    }
+
+    // Fallback for older backends or if direct lookup returned empty/404
+    const list = await this.listPolicies()
+    return list.find((p) => p.resourceId === resourceId) ?? null
   }
 
   // ── Admin queries & mutations (require a valid SIWE token) ─────────────────
 
   async listWebhookEvents(): Promise<WebhookEventLog[]> {
-    const raw = await getJson<any[]>('/v1/admin/events', {
+    const path = '/v1/admin/events'
+    const raw = await getJson<any[]>(path, {
       method: 'GET',
       headers: this.authHeaders(),
     })
+    validateWebhookEventsResponse(raw, path)
     return raw.map(mapWebhookEvent)
   }
 
@@ -382,6 +382,16 @@ export class LiveAccessApi implements AccessApi {
       headers: this.authHeaders(),
       body: JSON.stringify({ role }),
     })
+  }
+
+  async removeRole(address: string, role: Role): Promise<void> {
+    await getJson<void>(
+      `/v1/members/${encodeURIComponent(address)}/roles/${encodeURIComponent(role)}`,
+      {
+        method: 'DELETE',
+        headers: this.authHeaders(),
+      },
+    )
   }
 
   async updatePolicy(policy: AccessPolicy): Promise<void> {

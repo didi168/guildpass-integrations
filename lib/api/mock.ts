@@ -21,6 +21,8 @@
  * The mock MOCK_ADMIN_ADDRESS constant seeds a pre-authenticated admin for
  * convenience so you can simulate both unauthenticated and admin states:
  * NEXT_PUBLIC_MOCK_ADMIN_ADDRESS=0xYourAddress
+ *
+ * Scenario presets and reset functionality for developer testing are also included.
  */
 import { PolicyValidationError, validatePolicy } from '../validation/policy'
 import {
@@ -34,6 +36,7 @@ import {
   Role,
   Session,
   SiweAuthSession,
+  WalletVerification,
   WebhookEventLog,
 } from './types'
 import { ApiError } from './errors'
@@ -44,26 +47,47 @@ const MOCK_SESSION_STATE =
     process.env.NEXT_PUBLIC_MOCK_SESSION_STATE) ||
   ''
 
-const community: Community = {
+const DEFAULT_COMMUNITY: Community = {
   id: 'guildpass-demo',
   name: 'GuildPass Demo Community',
   description: 'Demo space for membership and gating',
   tiers: ['free', 'standard', 'pro'],
 }
 
-let resources: Resource[] = [
-  { id: 'alpha', title: 'Alpha Docs', description: 'Internal docs', minTier: 'standard' },
-  { id: 'pro-reports', title: 'Pro Reports', description: 'Advanced insight', minTier: 'pro' },
+const DEFAULT_RESOURCES: Resource[] = [
+  {
+    id: 'alpha',
+    title: 'Alpha Docs',
+    description: 'Internal docs',
+    minTier: 'standard',
+    content: [
+      { type: 'text', body: 'Welcome to the Alpha Docs. This is a restricted area.' },
+      { type: 'callout', title: 'Confidential', body: 'Do not share these documents outside the organization.', level: 'warning' },
+      { type: 'markdown', body: '### Getting Started\n\n1. Clone the repo\n2. Run `npm install`' },
+      { type: 'link', title: 'Internal Wiki', url: 'https://wiki.internal' }
+    ]
+  },
+  {
+    id: 'pro-reports',
+    title: 'Pro Reports',
+    description: 'Advanced insight',
+    minTier: 'pro',
+    content: [
+      { type: 'text', body: 'Quarterly Analysis Report' },
+      { type: 'video', url: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ', title: 'Market Overview' },
+      { type: 'file', title: 'Q3_Data.csv', url: '/files/q3_data.csv' }
+    ]
+  },
   { id: 'mem-updates', title: 'Member Updates', description: 'Community updates', minTier: 'free' },
 ]
 
-let policies: AccessPolicy[] = [
+const DEFAULT_POLICIES: AccessPolicy[] = [
   { resourceId: 'alpha', minTier: 'standard' },
   { resourceId: 'pro-reports', minTier: 'pro' },
   { resourceId: 'mem-updates', minTier: 'free' },
 ]
 
-const mockWebhookEvents: WebhookEventLog[] = [
+const DEFAULT_WEBHOOK_EVENTS: WebhookEventLog[] = [
   {
     id: "wh_01J1",
     eventType: "membership.created",
@@ -90,7 +114,13 @@ const mockWebhookEvents: WebhookEventLog[] = [
   }
 ]
 
-const memberStore: Record<string, { membership: Membership; roles: Role[]; profile: MemberProfile }> = {}
+const DEFAULT_MEMBER_STORE: Record<string, { membership: Membership; roles: Role[]; profile: MemberProfile }> = {}
+
+let community: Community = { ...DEFAULT_COMMUNITY }
+let resources: Resource[] = [...DEFAULT_RESOURCES]
+let policies: AccessPolicy[] = [...DEFAULT_POLICIES]
+let mockWebhookEvents: WebhookEventLog[] = [...DEFAULT_WEBHOOK_EVENTS]
+let memberStore: Record<string, { membership: Membership; roles: Role[]; profile: MemberProfile }> = { ...DEFAULT_MEMBER_STORE }
 
 function ensureAddress(addr?: string) {
   if (!addr) return null
@@ -105,11 +135,125 @@ function ensureAddress(addr?: string) {
       profile: {
         address: addr,
         displayName: `User ${addr.slice(0, 6)}`,
-        badges: [],
+        badges: ['Early Member', 'Beta Tester'],
       },
     }
   }
   return memberStore[addr]
+}
+
+type MockScenario = 
+  | 'active-member' 
+  | 'expired-member' 
+  | 'denied-resource' 
+  | 'admin-session-expired' 
+  | 'no-roles'
+
+/**
+ * Reset all mock data to its initial state.
+ */
+export function resetMockData() {
+  community = { ...DEFAULT_COMMUNITY }
+  resources = [...DEFAULT_RESOURCES]
+  policies = [...DEFAULT_POLICIES]
+  mockWebhookEvents = [...DEFAULT_WEBHOOK_EVENTS]
+  memberStore = { ...DEFAULT_MEMBER_STORE }
+}
+
+/**
+ * Apply a predefined scenario preset for testing.
+ */
+export function applyMockScenario(scenario: MockScenario, address: string = '0x1234567890123456789012345678901234567890') {
+  resetMockData()
+  
+  switch (scenario) {
+    case 'active-member':
+      memberStore[address] = {
+        membership: {
+          address,
+          tier: 'standard',
+          active: true,
+        },
+        roles: ['member'],
+        profile: {
+          address,
+          displayName: 'Active Standard User',
+          badges: ['Early Member', 'Standard Tier'],
+        },
+      }
+      break
+      
+    case 'expired-member':
+      memberStore[address] = {
+        membership: {
+          address,
+          tier: 'standard',
+          active: false,
+          expiresAt: new Date(Date.now() - 1000 * 60 * 60 * 24).toISOString(),
+        },
+        roles: ['member'],
+        profile: {
+          address,
+          displayName: 'Expired User',
+          badges: ['Former Member'],
+        },
+      }
+      break
+      
+    case 'denied-resource':
+      memberStore[address] = {
+        membership: {
+          address,
+          tier: 'free',
+          active: true,
+        },
+        roles: ['member'],
+        profile: {
+          address,
+          displayName: 'Free Tier User',
+          badges: ['Free Tier'],
+        },
+      }
+      // Ensure Alpha Docs require standard tier
+      policies = policies.map(p => 
+        p.resourceId === 'alpha' 
+          ? { ...p, minTier: 'standard' } 
+          : p
+      )
+      break
+      
+    case 'admin-session-expired':
+      memberStore[address] = {
+        membership: {
+          address,
+          tier: 'pro',
+          active: true,
+        },
+        roles: ['admin', 'member'],
+        profile: {
+          address,
+          displayName: 'Expired Admin',
+          badges: ['Admin', 'Pro Tier'],
+        },
+      }
+      break
+      
+    case 'no-roles':
+      memberStore[address] = {
+        membership: {
+          address,
+          tier: 'free',
+          active: true,
+        },
+        roles: [],
+        profile: {
+          address,
+          displayName: 'No Roles User',
+          badges: ['New User'],
+        },
+      }
+      break
+  }
 }
 
 /** Generate a short random hex nonce (16 bytes). */
@@ -185,6 +329,16 @@ export class MockAccessApi implements AccessApi {
     return policies.map((p) => ({ ...p, roles: p.roles ?? [] }))
   }
 
+  async getResource(id: string): Promise<Resource | null> {
+    const r = resources.find((x) => x.id === id)
+    return r ? { ...r, roles: r.roles ?? [] } : null
+  }
+
+  async getPolicy(resourceId: string): Promise<AccessPolicy | null> {
+    const p = policies.find((x) => x.resourceId === resourceId)
+    return p ? { ...p, roles: p.roles ?? [] } : null
+  }
+
   // ── Admin queries & mutations ──────────────────────────────────────────────
 
   async listWebhookEvents(): Promise<WebhookEventLog[]> {
@@ -196,6 +350,13 @@ export class MockAccessApi implements AccessApi {
     const data = ensureAddress(address)
     if (!data) return
     if (!data.roles.includes(role)) data.roles.push(role)
+  }
+
+  async removeRole(address: string, role: Role): Promise<void> {
+    if (MOCK_SESSION_STATE === 'expired') throwMockUnauthorized()
+    const data = memberStore[address]
+    if (!data) return
+    data.roles = data.roles.filter((r) => r !== role)
   }
 
   async updatePolicy(policy: AccessPolicy): Promise<void> {
@@ -259,5 +420,4 @@ export class MockAccessApi implements AccessApi {
       checkedAt: new Date().toISOString(),
     }
   }
-}
 }
