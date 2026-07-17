@@ -38,7 +38,6 @@ function SessionExpiredState() {
 function WebhookLogsContent() {
   const { address } = useAccount();
   const { authSession, markExpired, sessionStatus } = useSiweAuth();
-  const [sessionExpired, setSessionExpired] = useState(false);
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [typeFilter, setTypeFilter] = useState<string>('all');
 
@@ -55,7 +54,6 @@ function WebhookLogsContent() {
         return await getApi(address, authSession?.token).listWebhookEvents();
       } catch (err) {
         if (isApiError(err) && err.code === 'unauthorized') {
-          setSessionExpired(true);
           markExpired();
         }
         throw err;
@@ -73,14 +71,6 @@ function WebhookLogsContent() {
     const matchType = typeFilter === 'all' || evt.eventType === typeFilter;
     return matchStatus && matchType;
   });
-
-  if (error) {
-    return (
-      <div className="p-6">
-        <EmptyState title="Error loading log feed" message={error} />
-      </div>
-    );
-  }
 
   return (
     <div className="space-y-6 p-4 sm:p-6">
@@ -135,7 +125,7 @@ function WebhookLogsContent() {
         </div>
       </div>
 
-      {sessionExpired ? (
+      {sessionStatus === 'expired' ? (
         <SessionExpiredState />
       ) : isLoading ? (
         <LoadingState message="Ingesting latest system events..." />

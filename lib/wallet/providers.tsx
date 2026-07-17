@@ -2,21 +2,26 @@
 
 import {
   createContext,
-  PropsWithChildren,
   useCallback,
   useContext,
   useEffect,
-  useState,
+  useMemo,
+  useReducer,
 } from 'react'
 import { WagmiProvider, createConfig, useSignMessage, useAccount, useDisconnect } from 'wagmi'
 import { walletConfig } from '@/lib/wallet/config'
-import { QueryClient, QueryClientProvider, useQueryClient, QueryCache } from '@tanstack/react-query'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { getApi } from '@/lib/api'
 import { config } from '@/lib/config'
 import { SiweAuthSession, AdminSessionStatus } from '@/lib/api/types'
 import { clearAuthSession, loadAuthSession, storeAuthSession } from '@/lib/session'
 import { isApiError } from '@/lib/api/errors'
-import { accessKeys, queryKeys } from '@/lib/query'
+import {
+  buildSiweMessage,
+  deriveSessionStatus,
+  initialSiweSessionState,
+  siweSessionReducer,
+} from '@/lib/wallet/siwe-session'
 
 // ── Wagmi config ─────────────────────────────────────────────────────────────
 
@@ -42,120 +47,132 @@ export interface SiweAuthContextValue {
   markExpired: () => void
 }
 
-interface SiweAuthContextType {
-  session: SiweSession | null;
-  status: 'disconnected' | 'unauthenticated' | 'authenticated' | 'expiring';
-  timeLeft: number;
-  login: () => Promise<void>;
-  logout: () => void;
-}
-
-const SiweAuthContext = createContext<SiweAuthContextType | undefined>(undefined);
+const SiweAuthContext = createContext<SiweAuthContextValue | undefined>(undefined);
 const queryClient = new QueryClient();
 
 export function SiweAuthProvider({ children }: { children: React.ReactNode }) {
-  const { address, isConnected } = useAccount();
+  const { address, isConnected, chainId } = useAccount();
   const { signMessageAsync } = useSignMessage();
   const { disconnect } = useDisconnect();
-  const [session, setSession] = useState<SiweSession | null>(null);
-  const [timeLeft, setTimeLeft] = useState<number>(0);
+  const [state, dispatch] = useReducer(siweSessionReducer, initialSiweSessionState);
 
-  const logout = useCallback(() => {
-    setSession(null);
-    setTimeLeft(0);
-    if (typeof window !== 'undefined') {
-      sessionStorage.removeItem('siwe_session');
-    }
+  // Restore a persisted (non-expired) session on mount.
+  useEffect(() => {
+    const stored = loadAuthSession();
+    if (stored) dispatch({ type: 'restore', session: stored });
   }, []);
 
+  // The session was invalidated outside this provider (lib/session.ts fires
+  // this event whenever the stored session is cleared) — require re-auth.
   useEffect(() => {
-    if (typeof window !== 'undefined') {
-      const stored = sessionStorage.getItem('siwe_session');
-      if (stored) {
-        try {
-          const parsed = JSON.parse(stored) as SiweSession;
-          if (new Date(parsed.expiresAt).getTime() > Date.now()) {
-            setSession(parsed);
-          } else {
-            sessionStorage.removeItem('siwe_session');
-          }
-        } catch (_) {
-          sessionStorage.removeItem('siwe_session');
-        }
-      }
-    }
+    const onInvalidated = () => dispatch({ type: 'mark-expired' });
+    window.addEventListener('siwe:invalidated', onInvalidated);
+    return () => window.removeEventListener('siwe:invalidated', onInvalidated);
   }, []);
 
+  // Drop the session when the wallet disconnects or switches address.
   useEffect(() => {
-    if (!isConnected || (session && session.address !== address)) {
-      logout();
+    const session = state.authSession;
+    if (!session) return;
+    if (
+      !isConnected ||
+      (address && session.address.toLowerCase() !== address.toLowerCase())
+    ) {
+      clearAuthSession();
+      dispatch({ type: 'clear' });
     }
-  }, [address, isConnected, session, logout]);
+  }, [address, isConnected, state.authSession]);
 
+  // Mark the session expired once its expiry timestamp passes.
   useEffect(() => {
-    if (!session) {
-      setTimeLeft(0);
-      return;
-    }
+    const session = state.authSession;
+    if (!session) return;
 
-    const calculateTime = () => {
-      const diff = new Date(session.expiresAt).getTime() - Date.now();
-      const seconds = Math.max(0, Math.floor(diff / 1000));
-      setTimeLeft(seconds);
-      if (seconds <= 0) {
-        logout();
+    const check = () => {
+      if (new Date(session.expiresAt).getTime() <= Date.now()) {
+        clearAuthSession();
+        dispatch({ type: 'mark-expired' });
       }
     };
 
-    calculateTime();
-    const interval = setInterval(calculateTime, 1000);
+    check();
+    const interval = setInterval(check, 1000);
     return () => clearInterval(interval);
-  }, [session, logout]);
+  }, [state.authSession]);
 
-  const login = async () => {
+  const signIn = useCallback(async () => {
     if (!address) return;
+    dispatch({ type: 'sign-in-start' });
     try {
-      const nonceRes = await fetch('/v1/auth/siwe/nonce', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ address })
+      const api = getApi(address);
+      const nonce = await api.getNonce(address);
+      const message = buildSiweMessage({
+        domain: config.siwe.domain,
+        address,
+        statement: config.siwe.statement,
+        uri:
+          typeof window !== 'undefined'
+            ? window.location.origin
+            : `https://${config.siwe.domain}`,
+        chainId: chainId ?? 1,
+        nonce,
+        issuedAt: new Date().toISOString(),
       });
-      const { nonce } = await nonceRes.json();
-
-      const message = `localhost:3000 wants you to sign in with your Ethereum account:\n${address}\n\nSIWE Session Authentication\n\nNonce: ${nonce}`;
       const signature = await signMessageAsync({ message });
-
-      const verifyRes = await fetch('/v1/auth/siwe/verify', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message, signature })
-      });
-      
-      const data = await verifyRes.json();
-      if (data.token) {
-        setSession(data);
-        if (typeof window !== 'undefined') {
-          sessionStorage.setItem('siwe_session', JSON.stringify(data));
-        }
-      }
+      const session = await api.siweVerify(message, signature);
+      storeAuthSession(session);
+      dispatch({ type: 'sign-in-success', session });
     } catch (err) {
-      console.error(err);
+      dispatch({
+        type: 'sign-in-error',
+        message: isApiError(err)
+          ? err.safeMessage
+          : 'Sign-in was cancelled or failed. Please try again.',
+      });
     }
-  };
+  }, [address, chainId, signMessageAsync]);
 
-  let status: SiweAuthContextType['status'] = 'unauthenticated';
-  if (!isConnected) status = 'disconnected';
-  else if (session && timeLeft <= 60 && timeLeft > 0) status = 'expiring';
-  else if (session && timeLeft > 0) status = 'authenticated';
+  const logout = useCallback(async () => {
+    const token = state.authSession?.token;
+    clearAuthSession();
+    dispatch({ type: 'clear' });
+    disconnect();
+    if (token) {
+      await getApi(address).siweLogout(token).catch(() => {
+        // best-effort server-side invalidation
+      });
+    }
+  }, [address, state.authSession, disconnect]);
+
+  const markExpired = useCallback(() => {
+    clearAuthSession();
+    dispatch({ type: 'mark-expired' });
+  }, []);
+
+  const sessionStatus = deriveSessionStatus(state, isConnected);
+
+  const value = useMemo<SiweAuthContextValue>(
+    () => ({
+      authSession: state.authSession,
+      isAuthenticated: sessionStatus === 'authenticated',
+      sessionStatus,
+      isSigningIn: state.isSigningIn,
+      error: state.error,
+      signIn,
+      logout,
+      markExpired,
+    }),
+    [state.authSession, state.isSigningIn, state.error, sessionStatus, signIn, logout, markExpired],
+  );
 
   return (
-    <SiweAuthContext.Provider value={{ session, status, timeLeft, login, logout }}>
+    <SiweAuthContext.Provider value={value}>
       {children}
     </SiweAuthContext.Provider>
   );
 }
 
-export function useSiweAuth() {
+export function useSiweAuth(): SiweAuthContextValue {
   const context = useContext(SiweAuthContext);
   if (!context) throw new Error('useSiweAuth must be used within SiweAuthProvider');
   return context;
