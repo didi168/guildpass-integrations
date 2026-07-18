@@ -7,7 +7,9 @@
     "outDir": "../test-dist",
     "rootDir": "..",
     "incremental": false,
-    "jsx": "react-jsx"
+    "jsx": "react-jsx",
+    "skipLibCheck": true,
+    "lib": ["dom", "dom.iterable", "es2022"]
   },
   "include": [
     "../lib/api/mappers.ts",
@@ -16,6 +18,7 @@
     "../lib/api/access-decision.ts",
     "../lib/api/mock.ts",
     "../lib/wallet/address.ts",
+    "../lib/wallet/config.ts",
     "../lib/wallet/connectors.ts",
     "../lib/wallet/siwe-session.ts",
     "../lib/config.ts",
@@ -26,5 +29,9 @@
     "../types/**/*.d.ts",
     "./*.test.ts",
     "./*.test.tsx"
+  ],
+  "exclude": [
+    "node_modules",
+    "../node_modules"
   ]
 }
