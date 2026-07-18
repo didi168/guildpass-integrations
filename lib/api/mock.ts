@@ -347,6 +347,70 @@ export function applyMockScenario(scenario: MockScenario, address: string = '0x1
   }
 }
 
+/**
+ * Replay a webhook event into the mock event store for local debugging.
+ *
+ * Creates a debug copy of `event` with a replay-prefixed id, fresh timestamp,
+ * and `pending` status.  The replayed entry is prepended to the event feed
+ * so it appears at the top without mutating the original.
+ *
+ * Side effects are applied when the event type is recognised:
+ *  - membership.*      → seeds/updates the affected address in memberStore
+ *  - tier.upgraded     → promotes the affected address's tier
+ *
+ * This function is a no-op unless `config.apiMode === 'mock'` — callers
+ * must gate it themselves.
+ */
+export function replayMockEvent(event: WebhookEventLog): WebhookEventLog {
+  const replayed: WebhookEventLog = {
+    ...event,
+    id: `replay_${event.id}_${Date.now()}`,
+    status: 'pending',
+    timestamp: new Date().toISOString(),
+  }
+
+  mockWebhookEvents = [replayed, ...mockWebhookEvents]
+
+  // Apply side effects to the member store for recognised event types.
+  const addr = event.affectedIdentifier
+  if (addr && addr.startsWith('0x')) {
+    const existing = memberStore[addr]
+    switch (event.eventType) {
+      case 'membership.created':
+      case 'membership.renewed': {
+        const tier = (event.payloadSummary.tier as MembershipTier) ?? 'free'
+        memberStore[addr] = {
+          membership: { address: addr, tier, active: true },
+          roles: existing?.roles ?? ['member'],
+          profile: existing?.profile ?? { address: addr, displayName: `Replayed ${addr.slice(0, 6)}`, badges: [] },
+        }
+        break
+      }
+      case 'membership.expired':
+        if (existing) {
+          memberStore[addr] = {
+            ...existing,
+            membership: { ...existing.membership, active: false },
+          }
+        }
+        break
+      case 'tier.upgraded': {
+        const newTier = (event.payloadSummary.tier as MembershipTier) ?? 'standard'
+        if (existing) {
+          memberStore[addr] = {
+            ...existing,
+            membership: { ...existing.membership, tier: newTier },
+          }
+        }
+        break
+      }
+      // policy.updated — no member-store side effect
+    }
+  }
+
+  return replayed
+}
+
 /** Generate a short random hex nonce (16 bytes). */
 function randomHex(): string {
   return Array.from({ length: 16 }, () =>

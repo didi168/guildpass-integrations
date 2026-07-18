@@ -1,6 +1,6 @@
 import { config } from '../config'
 import { LiveAccessApi } from './live'
-import { MockAccessApi, resetMockData, applyMockScenario } from './mock'
+import { MockAccessApi, resetMockData, applyMockScenario, replayMockEvent } from './mock'
 import { AccessApi } from './types'
 
 /**
@@ -17,4 +17,4 @@ export function getApi(address?: string, token?: string): AccessApi {
 
 export * from './types'
 export * from './mappers'
-export { resetMockData, applyMockScenario }
+export { resetMockData, applyMockScenario, replayMockEvent }
