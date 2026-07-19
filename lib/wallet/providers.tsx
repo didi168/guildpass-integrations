@@ -69,6 +69,7 @@ import { config } from '@/lib/config'
 import { SiweAuthSession, AdminSessionStatus } from '@/lib/api/types'
 import {
   clearAuthSession,
+  getStoredToken,
   isRefreshTokenExpired,
   loadAuthSession,
   loadAuthSessionIncludingExpired,
@@ -372,7 +373,7 @@ export function SiweAuthProvider({ children }: { children: React.ReactNode }) {
 
   const logout = useCallback(async () => {
     cancelRenewal()
-    const token = state.authSession?.token
+    const token = getStoredToken()
     clearAuthSession()
     dispatch({ type: 'clear' })
     broadcast({ type: 'signed-out' })
@@ -382,7 +383,7 @@ export function SiweAuthProvider({ children }: { children: React.ReactNode }) {
         // best-effort server-side invalidation
       })
     }
-  }, [address, state.authSession, cancelRenewal, broadcast, disconnect])
+  }, [address, cancelRenewal, broadcast, disconnect])
 
   // ── markExpired ─────────────────────────────────────────────────────────────
 
