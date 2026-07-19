@@ -13,6 +13,7 @@ import { mapVerificationState } from "@/lib/api/mappers";
 import { queryKeys } from "@/lib/query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { MembershipExpiryBadge } from "@/components/ui/membership-expiry-badge";
 import Link from "next/link";
 import { buttonVariants } from "@/components/ui/button";
 import {
@@ -256,11 +257,15 @@ export default function DashboardPage() {
                   <Badge variant="destructive">Inactive</Badge>
                 )}
               </div>
-              <div className="text-sm text-muted-foreground">
-                Expires:{" "}
-                {membership?.expiresAt
-                  ? new Date(membership.expiresAt).toLocaleDateString()
-                  : "N/A"}
+              <div className="text-sm text-muted-foreground flex flex-wrap items-center gap-2">
+                <span>
+                  Expires: {membership?.expiresAt
+                    ? new Date(membership.expiresAt).toLocaleDateString()
+                    : "N/A"}
+                </span>
+                {membership?.expiresAt ? (
+                  <MembershipExpiryBadge expiresAt={membership.expiresAt} />
+                ) : null}
               </div>
             </div>
           )}
