@@ -128,3 +128,38 @@ describe('buildSiweMessage', () => {
     assert.ok(lines.includes('Issued At: 2026-01-01T00:00:00.000Z'))
   })
 })
+
+describe('SIWE silent refresh sessions', () => {
+  test('mock refresh rotates tokens and extends access expiry', async () => {
+    const api = new MockAccessApi(ADDRESS)
+    const initial = await api.siweVerify('message', '0xsignature')
+
+    assert.ok(initial.refreshToken)
+    const refreshed = await api.siweRefresh(initial.refreshToken!)
+
+    assert.equal(refreshed.isAuthenticated, true)
+    assert.equal(refreshed.address, ADDRESS)
+    assert.notEqual(refreshed.token, initial.token)
+    assert.notEqual(refreshed.refreshToken, initial.refreshToken)
+    assert.ok(new Date(refreshed.expiresAt).getTime() > Date.now())
+  })
+
+  test('reducer accepts silently refreshed session without requiring re-auth banner', async () => {
+    const api = new MockAccessApi(ADDRESS)
+    const initial = await api.siweVerify('message', '0xsignature')
+    const refreshed = await api.siweRefresh(initial.refreshToken!)
+
+    let state = siweSessionReducer(initialSiweSessionState, {
+      type: 'sign-in-success',
+      session: initial,
+    })
+    state = siweSessionReducer(state, {
+      type: 'refresh-success',
+      session: refreshed,
+    })
+
+    assert.equal(deriveSessionStatus(state, true), 'authenticated')
+    assert.equal(bannerVisible(state), false)
+    assert.equal(state.authSession?.token, refreshed.token)
+  })
+})
