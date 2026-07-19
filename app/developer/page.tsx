@@ -10,13 +10,14 @@ import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { useState } from 'react'
-
+import { SiweDebugPanel } from '@/components/developer/siwe-debug-panel'
 type Scenario = 
   | 'active-member' 
   | 'expired-member' 
   | 'denied-resource' 
   | 'admin-session-expired' 
   | 'no-roles'
+  | 'multiple-communities'
 
 const SCENARIOS: { id: Scenario; label: string; description: string }[] = [
   { id: 'active-member', label: 'Active Member', description: 'Active standard tier member with access to Alpha Docs' },
@@ -24,6 +25,7 @@ const SCENARIOS: { id: Scenario; label: string; description: string }[] = [
   { id: 'denied-resource', label: 'Denied Resource', description: 'Free tier member denied access to Alpha Docs' },
   { id: 'admin-session-expired', label: 'Admin Session Expired', description: 'Admin user to test expired SIWE session' },
   { id: 'no-roles', label: 'No Roles', description: 'Member with no roles assigned' },
+  { id: 'multiple-communities', label: 'Multiple Communities', description: 'Member active across several communities' },
 ]
 
 export default function DeveloperPage() {
@@ -46,6 +48,7 @@ export default function DeveloperPage() {
             </p>
           </CardContent>
         </Card>
+        <SiweDebugPanel />
       </div>
     )
   }
