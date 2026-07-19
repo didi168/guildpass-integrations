@@ -1,10 +1,22 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
+import { useAccount } from 'wagmi';
+import { getApi } from '@/lib/api';
+import { queryKeys } from '@/lib/query';
 import { useSiweAuth } from '@/lib/wallet/providers';
 
 export function AdminGuard({ children }: { children: React.ReactNode }) {
   const { sessionStatus, authSession, signIn, isSigningIn } = useSiweAuth();
+  const { address } = useAccount();
+  const { data: session } = useQuery({
+    queryKey: queryKeys.session.byAddress(address ?? authSession?.address ?? ''),
+    queryFn: () => getApi(address ?? authSession?.address, authSession?.token).getSession(),
+    enabled: sessionStatus === 'authenticated' && !!(address ?? authSession?.address),
+    staleTime: 10_000,
+    retry: 1,
+  });
   const [timeLeft, setTimeLeft] = useState<number | null>(null);
 
   useEffect(() => {
@@ -48,6 +60,15 @@ export function AdminGuard({ children }: { children: React.ReactNode }) {
         >
           {isSigningIn ? 'Signing…' : 'Sign In With Ethereum'}
         </button>
+      </div>
+    );
+  }
+
+  if (!session?.roles?.includes('admin')) {
+    return (
+      <div className="flex flex-col items-center justify-center p-12 text-center bg-white dark:bg-zinc-950 rounded-lg border border-zinc-200 dark:border-zinc-800">
+        <h2 className="text-xl font-bold mb-2">Admin Role Required</h2>
+        <p className="text-zinc-500 mb-4">Your authenticated wallet does not have the admin role required for this section.</p>
       </div>
     );
   }
