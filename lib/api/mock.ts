@@ -279,6 +279,7 @@ type MockScenario =
   | 'denied-resource' 
   | 'admin-session-expired' 
   | 'no-roles'
+  | 'multiple-communities'
 
 /**
  * Replay a webhook event by cloning it into the mock event store.
@@ -413,6 +414,38 @@ export function applyMockScenario(scenario: MockScenario, address: string = '0x1
           address,
           displayName: 'No Roles User',
           badges: ['New User'],
+        },
+      }
+      break
+
+    case 'multiple-communities':
+      // Seed a member whose data reflects participation in more than one
+      // community. The mock session model exposes a single active community,
+      // so this preset points the active community at a multi-community hub
+      // and marks the member's badges to reflect their other memberships.
+      // Existing single-community presets are unaffected.
+      community = {
+        id: 'guildpass-hub',
+        name: 'GuildPass Hub (Multi-Community)',
+        description:
+          'Shared hub for a member active across several communities',
+        tiers: ['free', 'standard', 'pro'],
+      }
+      memberStore[address] = {
+        membership: {
+          address,
+          tier: 'standard',
+          active: true,
+        },
+        roles: ['member'],
+        profile: {
+          address,
+          displayName: 'Multi-Community Member',
+          badges: [
+            'GuildPass Demo Community',
+            'Builders Collective',
+            'Design Guild',
+          ],
         },
       }
       break
