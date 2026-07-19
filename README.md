@@ -257,7 +257,8 @@ All live requests are sent to `NEXT_PUBLIC_CORE_API_URL` (default `http://localh
 | `GET` | `/v1/resources/:id` | — | Single resource lookup (with list fallback) |
 | `GET` | `/v1/policies` | — | All access policies |
 | `GET` | `/v1/policies/:resourceId` | — | Single policy lookup (with list fallback) |
-| `GET` | `/v1/admin/events` | Bearer | Admin webhook event feed |
+| `GET` | `/v1/admin/events` | Bearer | Admin webhook event feed fallback snapshot |
+| `GET` | `/v1/admin/events/stream` | Bearer | **Provisional proposal for guildpass-core**: SSE stream of admin webhook events (`text/event-stream`, one `WebhookEventLog` JSON object per `data:` frame). The frontend attempts this push transport first and silently falls back to `/v1/admin/events` polling if unavailable. |
 | `POST` | `/v1/members/:address/roles` | Bearer | Assign role to member |
 | `PUT` | `/v1/policies/:resourceId` | Bearer | Update access policy |
 | `POST` | `/v1/auth/siwe/nonce` | — | Request SIWE nonce |
