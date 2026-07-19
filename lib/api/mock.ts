@@ -13,8 +13,8 @@
  *
  * Session simulation:
  *  Set NEXT_PUBLIC_MOCK_SESSION_STATE to control the simulated auth boundary:
- *    "expired"         — siweVerify returns an already-expired token; admin
- *                        mutations (assignRole/updatePolicy) throw a 401 ApiError
+ *    "expired"         — siweVerify returns an already-expired access token
+ *                        with a valid refresh token so renewal can be tested
  *    "unauthenticated" — siweVerify always throws, simulating a backend rejection
  *    (default)         — normal mock behaviour (instant auth, 1-hour token)
  *
@@ -649,11 +649,11 @@ export class MockAccessApi implements AccessApi {
    * Throws a 401 if the token is missing or malformed to demonstrate the
    * "refresh failed → sign-out" flow in tests.
    *
-   * Set NEXT_PUBLIC_MOCK_SESSION_STATE=expired to force siweRefresh to also
+   * Set NEXT_PUBLIC_MOCK_SESSION_STATE=refresh-expired to force siweRefresh to
    * fail (simulates a fully-expired or revoked refresh token).
    */
   async siweRefresh(refreshToken: string): Promise<SiweAuthSession> {
-    if (MOCK_SESSION_STATE === 'expired' || MOCK_SESSION_STATE === 'unauthenticated') {
+    if (MOCK_SESSION_STATE === 'refresh-expired' || MOCK_SESSION_STATE === 'unauthenticated') {
       throw new ApiError({
         status: 401,
         code: 'unauthorized',
