@@ -1,11 +1,32 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { verifyWallet } from '@/lib/integration-client'
+import {
+  verifyWallet,
+  GatewayConfigurationError,
+  GatewayDependencyError,
+  GatewayMethodError,
+} from '@/lib/integration-client'
+import { rateLimitRequest } from '@/lib/rate-limit'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 
 export async function GET(req: NextRequest) {
   const address = req.nextUrl.searchParams.get('address')
+
+  // Enforce per-IP / per-wallet rate limit before any downstream call.
+  const rl = rateLimitRequest(req, address)
+  if (rl.limited) {
+    return new NextResponse(
+      JSON.stringify({ error: 'Too many requests', retryAfter: rl.retryAfter }),
+      {
+        status: 429,
+        headers: {
+          'Retry-After': String(rl.retryAfter),
+          'X-RateLimit-Remaining': String(rl.remaining),
+        },
+      },
+    )
+  }
 
   if (!address) {
     return NextResponse.json(
@@ -18,13 +39,29 @@ export async function GET(req: NextRequest) {
     const verification = await verifyWallet(address)
     return NextResponse.json(verification)
   } catch (error) {
+    console.error('[Integration Gateway Error]:', error)
+
+    if (error instanceof GatewayConfigurationError) {
+      return NextResponse.json(
+        { error: 'Integration gateway misconfigured.' },
+        { status: 503 },
+      )
+    }
+    if (error instanceof GatewayDependencyError) {
+      return NextResponse.json(
+        { error: 'Integration gateway unavailable: missing optional dependency.' },
+        { status: 503 },
+      )
+    }
+    if (error instanceof GatewayMethodError) {
+      return NextResponse.json(
+        { error: 'Integration gateway unavailable: unsupported client method.' },
+        { status: 503 },
+      )
+    }
+
     return NextResponse.json(
-      {
-        error:
-          error instanceof Error
-            ? error.message
-            : 'Unable to verify wallet',
-      },
+      { error: 'Unable to verify wallet due to an internal error.' },
       { status: 502 },
     )
   }
