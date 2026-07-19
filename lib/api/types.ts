@@ -6,6 +6,7 @@
  */
 
 import { z } from 'zod';
+import { ApiError } from './errors'
 
 export type Role = 'member' | 'moderator' | 'admin'
 
@@ -121,6 +122,12 @@ export interface Resource {
   roles?: Role[]
   content?: ResourceContentBlock[]
 }
+
+export type ResourceLookupResult =
+  | { status: 'found'; data: Resource; source: 'direct' | 'fallback' }
+  | { status: 'not_found' }
+  | { status: 'error'; error: ApiError }
+
 
 export const ResourceSchema = z.object({
   id: z.string(),
@@ -446,7 +453,7 @@ export interface MemberAccessApi {
   listMembers(params?: { cursor?: string; limit?: number; filter?: string }): Promise<MemberRow[] | PaginatedMembers>
   listResources(): Promise<Resource[]>
   listPolicies(): Promise<AccessPolicy[]>
-  getResource(id: string): Promise<Resource | null>
+  getResource(id: string): Promise<ResourceLookupResult>
   getPolicy(resourceId: string): Promise<AccessPolicy | null>
 }
 

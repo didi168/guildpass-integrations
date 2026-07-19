@@ -180,21 +180,22 @@ describe('resource lookup', () => {
   test('MockAccessApi returns valid Resource or null', async () => {
     const api = new MockAccessApi()
     const r = await api.getResource('alpha')
-    assert.ok(r)
-    assert.equal(r.id, 'alpha')
-    assert.equal(r.title, 'Alpha Docs')
+    assert.equal(r.status, 'found')
+    assert.equal(r.status === 'found' && r.data.id, 'alpha')
+    assert.equal(r.status === 'found' && r.data.title, 'Alpha Docs')
 
     const nil = await api.getResource('non-existent')
-    assert.equal(nil, null)
+    assert.equal(nil.status, 'not_found')
   })
 
   test('LiveAccessApi returns valid Resource via direct lookup', async () => {
     stubFetch({ '/v1/resources/alpha': FIXTURES.resource })
     const api = new LiveAccessApi()
     const r = await api.getResource('alpha')
-    assert.ok(r)
-    assert.equal(r.id, 'alpha')
-    assert.equal(r.title, 'Alpha Docs')
+    assert.equal(r.status, 'found')
+    assert.equal(r.status === 'found' && r.source, 'direct')
+    assert.equal(r.status === 'found' && r.data.id, 'alpha')
+    assert.equal(r.status === 'found' && r.data.title, 'Alpha Docs')
   })
 
   test('LiveAccessApi falls back to list search when direct lookup returns 404', async () => {
@@ -205,18 +206,34 @@ describe('resource lookup', () => {
     })
     const api = new LiveAccessApi()
     const r = await api.getResource('alpha')
-    assert.ok(r)
-    assert.equal(r.id, 'alpha')
+    assert.equal(r.status, 'found')
+    assert.equal(r.status === 'found' && r.source, 'fallback')
+    assert.equal(r.status === 'found' && r.data.id, 'alpha')
   })
 
-  test('LiveAccessApi returns null when both direct lookup and list search fail', async () => {
+  test('LiveAccessApi returns not_found when both direct lookup and list search fail', async () => {
     stubFetch({
       '/v1/resources/non-existent': undefined,
       '/v1/resources': [],
     })
     const api = new LiveAccessApi()
     const r = await api.getResource('non-existent')
-    assert.equal(r, null)
+    assert.equal(r.status, 'not_found')
+  })
+
+  test('LiveAccessApi returns error result for server failures without using not found state', async () => {
+    global.fetch = async (input: RequestInfo | URL) => {
+      const url = String(input)
+      if (url.includes('/v1/resources/alpha')) {
+        return new Response('Server Error', { status: 500 }) as any
+      }
+      return new Response(JSON.stringify(FIXTURES.resources), { status: 200 }) as any
+    }
+
+    const api = new LiveAccessApi()
+    const r = await api.getResource('alpha')
+    assert.equal(r.status, 'error')
+    assert.equal(r.status === 'error' && r.error.code, 'server_error')
   })
 
   test('both APIs produce identical Resource lookup results', async () => {
