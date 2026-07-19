@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback, Fragment } from 'react';
+import { useState, useCallback, useEffect, Fragment } from 'react';
 import { useAccount } from 'wagmi';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { getApi, replayMockEvent } from '@/lib/api';
@@ -128,6 +128,7 @@ function WebhookLogsContent() {
   const [typeFilter, setTypeFilter] = useState<string>('all');
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [replayingId, setReplayingId] = useState<string | null>(null);
+  const [streamAvailable, setStreamAvailable] = useState(true);
 
   const isMockMode = config.apiMode === 'mock';
 
@@ -150,11 +151,38 @@ function WebhookLogsContent() {
       }
     },
     enabled: !!address && sessionStatus === 'authenticated',
+    refetchInterval: streamAvailable ? false : 15000,
     retry: (failureCount, err) => {
       if (isApiError(err) && err.code === 'unauthorized') return false;
       return failureCount < 1;
     },
   });
+
+
+  useEffect(() => {
+    if (!address || sessionStatus !== 'authenticated') return undefined;
+
+    setStreamAvailable(true);
+    const api = getApi(address, authSession?.token);
+    return api.subscribeWebhookEvents(
+      (event) => {
+        queryClient.setQueryData<WebhookEventLog[]>(
+          [...queryKeys.webhookEvents.all, address, authSession?.token ?? 'anonymous'],
+          (current = []) => [event, ...current.filter((existing) => existing.id !== event.id)],
+        );
+      },
+      (err) => {
+        if (isApiError(err) && err.code === 'unauthorized') {
+          markExpired();
+          return;
+        }
+        setStreamAvailable(false);
+        void queryClient.invalidateQueries({
+          queryKey: [...queryKeys.webhookEvents.all, address, authSession?.token ?? 'anonymous'],
+        });
+      },
+    );
+  }, [address, authSession?.token, markExpired, queryClient, sessionStatus]);
 
   const handleReplay = useCallback(async (eventId: string) => {
     setReplayingId(eventId);
@@ -189,7 +217,7 @@ function WebhookLogsContent() {
         </h1>
         <p className="text-sm text-muted-foreground">
           Operational telemetry stream for community subscription events, upgrades, and access
-          switches.
+          switches. {streamAvailable ? 'Live stream connected.' : 'Streaming unavailable; polling every 15 seconds.'}
         </p>
       </div>
 

@@ -21,6 +21,7 @@ import {
   BackendResource,
   BackendPolicy,
   WebhookEventLog,
+  WebhookEventUnsubscribe,
   SessionSchema,
   CommunitySchema,
   MembershipSchema,
@@ -163,6 +164,24 @@ async function parseErrorBody(
   } catch {
     return undefined
   }
+}
+
+function parseSseEvent(chunk: string): WebhookEventLog[] {
+  return chunk
+    .split('\n\n')
+    .map((block) => {
+      const data = block
+        .split('\n')
+        .filter((line) => line.startsWith('data:'))
+        .map((line) => line.slice(5).trimStart())
+        .join('\n')
+
+      if (!data || data === '[DONE]') return null
+      const parsed = JSON.parse(data)
+      WebhookEventLogSchema.parse(parsed)
+      return mapWebhookEvent(parsed)
+    })
+    .filter((event): event is WebhookEventLog => event !== null)
 }
 
 function normalizeResponseKeys(data: any): any {
@@ -499,6 +518,60 @@ export class LiveAccessApi implements AccessApi {
     }, z.array(WebhookEventLogSchema))
     validateWebhookEventsResponse(raw, path)
     return raw.map(mapWebhookEvent)
+  }
+
+  subscribeWebhookEvents(
+    onEvent: (event: WebhookEventLog) => void,
+    onError?: (error: unknown) => void,
+  ): WebhookEventUnsubscribe {
+    const path = '/v1/admin/events/stream'
+    const controller = new AbortController()
+    let buffer = ''
+
+    /**
+     * PROVISIONAL — `GET /v1/admin/events/stream` is a proposed guildpass-core
+     * SSE endpoint. It should return `text/event-stream` frames whose `data:`
+     * payload is a single WebhookEventLog object. Until the backend ships this
+     * contract, failures are intentionally reported to the caller so the UI can
+     * silently resume the existing `/v1/admin/events` polling behavior.
+     */
+    fetch(`${BASE}${path}`, {
+      method: 'GET',
+      headers: {
+        ...this.authHeaders(),
+        Accept: 'text/event-stream',
+      },
+      signal: controller.signal,
+    })
+      .then(async (res) => {
+        if (!res.ok || !res.body) {
+          const body = await parseErrorBody(res).catch(() => undefined)
+          throw createApiError(res.status, body, path)
+        }
+
+        const reader = res.body.getReader()
+        const decoder = new TextDecoder()
+
+        while (!controller.signal.aborted) {
+          const { done, value } = await reader.read()
+          if (done) {
+            throw new Error('Admin events stream closed before unsubscribe')
+          }
+          buffer += decoder.decode(value, { stream: true })
+          const frames = buffer.split('\n\n')
+          buffer = frames.pop() ?? ''
+          for (const frame of frames) {
+            for (const event of parseSseEvent(frame)) {
+              onEvent(event)
+            }
+          }
+        }
+      })
+      .catch((err) => {
+        if (!controller.signal.aborted) onError?.(err)
+      })
+
+    return () => controller.abort()
   }
 
   /**
