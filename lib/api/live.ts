@@ -12,6 +12,7 @@ import {
   MembershipTier,
   PaginatedMembers,
   Resource,
+  ResourceLookupResult,
   Role,
   Session,
   SiweAuthSession,
@@ -451,23 +452,49 @@ export class LiveAccessApi implements AccessApi {
     return raw.map(mapPolicy)
   }
 
-  async getResource(id: string): Promise<Resource | null> {
+  async getResource(id: string): Promise<ResourceLookupResult> {
     const path = `/v1/resources/${encodeURIComponent(id)}`
     try {
       const raw = await getJson<BackendResource>(path, undefined, ResourceSchema)
       if (raw && Object.keys(raw).length > 0) {
         validateResourceResponse(raw, path)
-        return mapResource(raw)
+        return { status: 'found', data: mapResource(raw), source: 'direct' }
       }
     } catch (err) {
       if (!(err instanceof ApiError && err.status === 404)) {
-        throw err
+        return {
+          status: 'error',
+          error: err instanceof ApiError
+            ? err
+            : new ApiError({
+              code: 'unknown_error',
+              safeMessage: 'Request failed.',
+              path,
+              cause: err,
+            }),
+        }
       }
     }
 
     // Fallback for older backends or if direct lookup returned empty/404
-    const list = await this.listResources()
-    return list.find((r) => r.id === id) ?? null
+    try {
+      const list = await this.listResources()
+      const resource = list.find((r) => r.id === id)
+      return resource
+        ? { status: 'found', data: resource, source: 'fallback' }
+        : { status: 'not_found' }
+    } catch (err) {
+      return {
+        status: 'error',
+        error: err instanceof ApiError
+          ? err
+          : new ApiError({
+            code: 'unknown_error',
+            safeMessage: 'Request failed.',
+            cause: err,
+          }),
+      }
+    }
   }
 
   async getPolicy(resourceId: string): Promise<AccessPolicy | null> {
