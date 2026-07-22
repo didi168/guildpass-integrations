@@ -16,6 +16,7 @@
     "test": "tsc -p test/tsconfig.json --skipLibCheck && node --test test-dist/test/*.test.js",
     "test:e2e": "playwright test",
     "test:e2e:ui": "playwright test --ui",
+    "test:accessibility": "playwright test test/e2e/accessibility.spec.ts",
     "typecheck": "tsc --noEmit",
     "sync-types": "node scripts/sync-api-types.js --write",
     "check-types": "node scripts/sync-api-types.js --check"
