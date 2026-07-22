@@ -6,6 +6,7 @@ import { useAccount } from 'wagmi';
 import { getApi } from '@/lib/api';
 import { queryKeys } from '@/lib/query';
 import { useSiweAuth } from '@/lib/wallet/providers';
+import { Button } from '@/components/ui/button';
 
 export function AdminGuard({ children }: { children: React.ReactNode }) {
   const { sessionStatus, authSession, signIn, isSigningIn } = useSiweAuth();
@@ -43,7 +44,7 @@ export function AdminGuard({ children }: { children: React.ReactNode }) {
         aria-label="Access blocked: wallet disconnected"
         className="flex flex-col items-center justify-center p-12 text-center bg-white dark:bg-zinc-950 rounded-lg border border-zinc-200 dark:border-zinc-800"
       >
-        <span style={srOnly}>
+        <span className="sr-only">
           This administrative section is locked because no wallet is connected.
           Connect your administrative wallet to continue.
         </span>
@@ -61,7 +62,7 @@ export function AdminGuard({ children }: { children: React.ReactNode }) {
         aria-label="Access blocked: sign-in required"
         className="flex flex-col items-center justify-center p-12 text-center bg-white dark:bg-zinc-950 rounded-lg border border-zinc-200 dark:border-zinc-800"
       >
-        <span style={srOnly}>
+        <span className="sr-only">
           Your wallet is connected but not signed in. Sign in with Ethereum to
           unlock this administrative section.
         </span>
@@ -71,13 +72,13 @@ export function AdminGuard({ children }: { children: React.ReactNode }) {
             ? 'Your admin session has expired. Sign in again to continue.'
             : 'Accessing privileged management consoles requires a secure gasless authentication signature.'}
         </p>
-        <button
+        <Button
           onClick={signIn}
           disabled={isSigningIn}
-          className="px-4 py-2 text-sm font-medium text-white bg-zinc-900 dark:bg-zinc-50 dark:text-zinc-900 rounded-md transition-colors hover:bg-zinc-800 dark:hover:bg-zinc-200 disabled:opacity-50"
+          aria-busy={isSigningIn}
         >
           {isSigningIn ? 'Signing…' : 'Sign In With Ethereum'}
-        </button>
+        </Button>
       </div>
     );
   }
@@ -101,13 +102,14 @@ export function AdminGuard({ children }: { children: React.ReactNode }) {
             <span aria-hidden="true">⚠️</span>
             <span>Your security session will expire in <strong>{timeLeft}s</strong>. Action requests made after expiration will fail.</span>
           </div>
-          <button
+          <Button
             onClick={signIn}
             disabled={isSigningIn}
-            className="px-3 py-1.5 text-xs font-semibold text-white bg-amber-700 hover:bg-amber-800 rounded transition-colors disabled:opacity-50"
+            aria-busy={isSigningIn}
+            size="sm"
           >
             {isSigningIn ? 'Signing…' : 'Extend Session'}
-          </button>
+          </Button>
         </div>
       )}
       {children}
