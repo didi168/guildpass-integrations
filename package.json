@@ -43,6 +43,7 @@
     "@guildpass/integration-client": "*"
   },
   "devDependencies": {
+    "@axe-core/playwright": "^4.10.0",
     "@playwright/test": "^1.48.0",
     "@types/node": "^20.11.30",
     "@types/react": "^18.2.79",
