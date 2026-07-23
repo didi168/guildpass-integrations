@@ -826,6 +826,39 @@ export class MockAccessApi implements AccessApi {
     schedulePersist()
   }
 
+  async listAdminEvents(params?: AdminEventFilterParams): Promise<Paginated<WebhookEvent>> {
+    let events = mockWebhookEvents
+    
+    if (params?.types && params.types.length > 0) {
+      events = events.filter((e) => params.types!.includes(e.type))
+    }
+    
+    if (params?.startDate) {
+      const start = new Date(params.startDate)
+      events = events.filter((e) => new Date(e.createdAt) >= start)
+    }
+    
+    if (params?.endDate) {
+      // Include the end date fully (e.g., up to end of the day)
+      const end = new Date(params.endDate)
+      end.setUTCHours(23, 59, 59, 999)
+      events = events.filter((e) => new Date(e.createdAt) <= end)
+    }
+
+    const page = params?.page || 1
+    const limit = params?.limit || 20
+    const startIndex = (page - 1) * limit
+
+    const paginated = events.slice(startIndex, startIndex + limit)
+
+    return {
+      data: paginated,
+      total: events.length,
+      page,
+      limit
+    }
+  }
+
   // ── SIWE mock endpoints ────────────────────────────────────────────────────
 
   /**
