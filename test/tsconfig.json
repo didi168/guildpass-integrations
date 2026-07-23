@@ -1,7 +1,6 @@
 {
   "extends": "../tsconfig.json",
   "compilerOptions": {
-    "ignoreDeprecations": "6.0",
     "module": "CommonJS",
     "moduleResolution": "Node10",
     "allowJs": true,
@@ -29,7 +28,7 @@
     "../components/feature-gate.tsx",
     "../components/wallet/address-text.tsx",
     "../components/nav.tsx",
-    "../app/admin/analytics/page.tsx",
+    "../app/[communitySlug]/admin/analytics/page.tsx",
     "../components/admin-guard.tsx",
     "../components/wallet/address-text.tsx",
     "../lib/wallet/siwe-context.ts",
