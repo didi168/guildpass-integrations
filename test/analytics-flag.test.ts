@@ -293,8 +293,8 @@ describe('Analytics feature flag', () => {
     process.env.NEXT_PUBLIC_MOCK_MODE = 'true'
     clearConfigCache()
 
-    delete require.cache[require.resolve('../app/admin/analytics/page')]
-    const AnalyticsPage = require('../app/admin/analytics/page').default
+    delete require.cache[require.resolve('../app/[communitySlug]/admin/analytics/page')]
+    const AnalyticsPage = require('../app/[communitySlug]/admin/analytics/page').default
 
     const html = renderToStaticMarkup(React.createElement(AnalyticsPage))
     assert.doesNotMatch(

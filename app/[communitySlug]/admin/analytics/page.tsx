@@ -4,7 +4,6 @@ import { useAccount } from "wagmi";
 import { useQuery } from "@tanstack/react-query";
 import { getApi } from "@/lib/api";
 import { useParams } from "next/navigation";
-import type { AnalyticsSummary, MemberGrowthDataPoint, ResourceAccessCount } from "@/lib/api";
 import { isApiError } from "@/lib/api/errors";
 import {
   computeAnalyticsSummary,
@@ -232,11 +231,16 @@ function AnalyticsContent() {
     isError,
     error,
     refetch,
-  } = useQuery<AnalyticsSummary>({
+  } = useQuery<ComputedAnalyticsSummary>({
     queryKey: [...queryKeys.analytics.summary(communitySlug), address, authSession?.token ?? "anonymous"],
     queryFn: async ({ signal }) => {
       try {
-        return await getApi(address, authSession?.token, communitySlug).getAnalyticsSummary(signal);
+        const api = getApi(address, authSession?.token, communitySlug);
+        const [members, events] = await Promise.all([
+          fetchAllMembers(api, signal),
+          api.listWebhookEvents(signal),
+        ]);
+        return computeAnalyticsSummary(members, events);
       } catch (err) {
         if (isApiError(err) && err.code === "aborted") throw err;
         if (isApiError(err) && err.code === "unauthorized") {
