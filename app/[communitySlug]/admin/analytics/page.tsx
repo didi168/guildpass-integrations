@@ -3,6 +3,8 @@
 import { useAccount } from "wagmi";
 import { useQuery } from "@tanstack/react-query";
 import { getApi } from "@/lib/api";
+import { useParams } from "next/navigation";
+import type { AnalyticsSummary, MemberGrowthDataPoint, ResourceAccessCount } from "@/lib/api";
 import { isApiError } from "@/lib/api/errors";
 import {
   computeAnalyticsSummary,
@@ -221,6 +223,8 @@ function SessionExpiredState() {
 function AnalyticsContent() {
   const { address } = useAccount();
   const { authSession, markExpired, sessionStatus } = useSiweAuth();
+  const params = useParams();
+  const communitySlug = (params?.communitySlug as string) || 'guildpass-demo';
 
   const {
     data: summary,
@@ -228,16 +232,11 @@ function AnalyticsContent() {
     isError,
     error,
     refetch,
-  } = useQuery<ComputedAnalyticsSummary>({
-    queryKey: [...queryKeys.analytics.summary, address, authSession?.token ?? "anonymous"],
+  } = useQuery<AnalyticsSummary>({
+    queryKey: [...queryKeys.analytics.summary(communitySlug), address, authSession?.token ?? "anonymous"],
     queryFn: async ({ signal }) => {
       try {
-        const api = getApi(address, authSession?.token);
-        const [members, events] = await Promise.all([
-          fetchAllMembers(api, signal),
-          api.listWebhookEvents(signal),
-        ]);
-        return computeAnalyticsSummary(members, events);
+        return await getApi(address, authSession?.token, communitySlug).getAnalyticsSummary(signal);
       } catch (err) {
         if (isApiError(err) && err.code === "aborted") throw err;
         if (isApiError(err) && err.code === "unauthorized") {

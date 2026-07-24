@@ -14,6 +14,7 @@ import { AdminGuard } from "@/components/admin-guard";
 import { useSiweAuth } from "@/lib/wallet/providers";
 import { AuthError } from "@/lib/api/live";
 import { queryKeys, reconcileMemberRoleCache } from "@/lib/query";
+import { useParams } from "next/navigation";
 import {
   LoadingState,
   ErrorState,
@@ -159,6 +160,8 @@ export default function MembersPage() {
   const { authSession, markExpired, sessionStatus } = useSiweAuth();
   const qc = useQueryClient();
   const { toasts, addToast, dismissToast } = useToasts();
+  const params = useParams();
+  const communitySlug = (params?.communitySlug as string) || 'guildpass-demo';
 
   // Filter state
   const [searchQuery, setSearchQuery] = useState('')
@@ -185,9 +188,9 @@ export default function MembersPage() {
     isFetchingNextPage,
     refetch,
   } = useInfiniteQuery({
-    queryKey: [...queryKeys.members.all, { searchQuery }],
+    queryKey: [...queryKeys.members.all(communitySlug), { searchQuery }],
     queryFn: async ({ pageParam }) => {
-      const api = getApi(address, authSession?.token);
+      const api = getApi(address, authSession?.token, communitySlug);
       const limit = 100;
       const res = await api.listMembers({
         cursor: pageParam,
@@ -285,16 +288,16 @@ export default function MembersPage() {
     reset: resetMutation,
   } = useMutation<void, unknown, AssignRoleInput, { previousQueries?: [any, any][] }>({
     mutationFn: (input) =>
-      getApi(address, authSession?.token).assignRole(input.address, input.role),
+      getApi(address, authSession?.token, communitySlug).assignRole(input.address, input.role),
     onMutate: async (input) => {
-      await qc.cancelQueries({ queryKey: queryKeys.members.all });
-      const previousQueries = qc.getQueriesData({ queryKey: queryKeys.members.all });
+      await qc.cancelQueries({ queryKey: queryKeys.members.all(communitySlug) });
+      const previousQueries = qc.getQueriesData({ queryKey: queryKeys.members.all(communitySlug) });
 
       setPendingAssignment(input);
       setSuccessAssignment(null);
       setRollbackMessage("");
 
-      qc.setQueriesData({ queryKey: queryKeys.members.all }, (old: any) => {
+      qc.setQueriesData({ queryKey: queryKeys.members.all(communitySlug) }, (old: any) => {
         if (!old) return old;
         if (Array.isArray(old)) {
           return applyOptimisticRole(old, input.address, input.role);
@@ -318,7 +321,7 @@ export default function MembersPage() {
         address: input.address,
         role: input.role,
         action: "assign",
-      });
+      }, communitySlug);
       setSuccessAssignment(input);
       addToast({
         tone: "success",
@@ -334,7 +337,7 @@ export default function MembersPage() {
           qc.setQueryData(queryKey, oldData);
         }
       }
-      void qc.invalidateQueries({ queryKey: queryKeys.members.all });
+      void qc.invalidateQueries({ queryKey: queryKeys.members.all(communitySlug) });
       const isExpiredSession = err instanceof AuthError && err.code === "unauthorized";
       const message = isExpiredSession
         ? "Session expired. Use the re-authentication banner to sign in again."
@@ -365,14 +368,14 @@ export default function MembersPage() {
     { previousQueries?: [any, any][] }
   >({
     mutationFn: (input) =>
-      getApi(address, authSession?.token).removeRole(input.address, input.role),
+      getApi(address, authSession?.token, communitySlug).removeRole(input.address, input.role),
     onMutate: async (input) => {
-      await qc.cancelQueries({ queryKey: queryKeys.members.all });
-      const previousQueries = qc.getQueriesData({ queryKey: queryKeys.members.all });
+      await qc.cancelQueries({ queryKey: queryKeys.members.all(communitySlug) });
+      const previousQueries = qc.getQueriesData({ queryKey: queryKeys.members.all(communitySlug) });
       setPendingAssignment(input);
       setSuccessMessage("");
       setRollbackMessage("");
-      qc.setQueriesData({ queryKey: queryKeys.members.all }, (old: any) => {
+      qc.setQueriesData({ queryKey: queryKeys.members.all(communitySlug) }, (old: any) => {
         if (!old) return old;
         if (Array.isArray(old)) {
           return applyOptimisticRemoveRole(old, input.address, input.role);
@@ -395,7 +398,7 @@ export default function MembersPage() {
         address: input.address,
         role: input.role,
         action: "remove",
-      });
+      }, communitySlug);
       setSuccessMessage(`Role "${input.role}" removed from ${input.address}.`);
       resetMutation();
     },
@@ -405,7 +408,7 @@ export default function MembersPage() {
           qc.setQueryData(queryKey, oldData);
         }
       }
-      void qc.invalidateQueries({ queryKey: queryKeys.members.all });
+      void qc.invalidateQueries({ queryKey: queryKeys.members.all(communitySlug) });
       setRollbackMessage(`Change reverted: ${safeErrorMessage(err)}`);
       if (err instanceof AuthError) {
         markExpired();
@@ -478,7 +481,7 @@ export default function MembersPage() {
     setIsBulkPending(true);
     setBulkResults(null);
 
-    const api = getApi(address, authSession?.token);
+    const api = getApi(address, authSession?.token, communitySlug);
     const results: BulkResult["items"] = [];
 
     const settled = await Promise.allSettled(
@@ -509,7 +512,7 @@ export default function MembersPage() {
     );
 
     // Refresh member list to reflect changes
-    void qc.invalidateQueries({ queryKey: queryKeys.members.all });
+    void qc.invalidateQueries({ queryKey: queryKeys.members.all(communitySlug) });
 
     addToast({
       tone: failed === 0 ? "success" : "warning",
@@ -526,17 +529,17 @@ export default function MembersPage() {
     setIsBulkPending(false);
   };
 
-  const handleBulkAssign = () => {
+  const handleBulkAssign = async () => {
     const items = selectedAddressArray.map((addr) => ({
       address: addr,
       role: bulkRole,
     }));
-    executeBulkAssign(items);
+    await executeBulkAssign(items);
   };
 
-  const handleRetryFailed = () => {
+  const handleRetryFailed = async () => {
     if (bulkFailedItems.length > 0) {
-      executeBulkAssign(bulkFailedItems);
+      await executeBulkAssign(bulkFailedItems);
     }
   };
 

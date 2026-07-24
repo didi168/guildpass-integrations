@@ -9,6 +9,7 @@
  *   "Route is fully hidden when the flag is false (the default everywhere),
  *    verified by test."
  */
+import './setup-env'
 import { describe, test, beforeEach } from 'node:test'
 import * as assert from 'node:assert/strict'
 import * as React from 'react'
@@ -29,7 +30,8 @@ require.cache[require.resolve('wagmi')] = {
 } as any
 
 const mockNextNavigation = {
-  usePathname: () => '/admin/analytics'
+  usePathname: () => '/admin/analytics',
+  useParams: () => ({ communitySlug: 'guildpass-demo' }),
 }
 require.cache[require.resolve('next/navigation')] = {
   id: require.resolve('next/navigation'),
@@ -235,8 +237,6 @@ describe('Analytics feature flag', () => {
   test('Nav component hides Analytics link when flag is false', () => {
     // Clear config cache to reload features with default analytics = false
     delete process.env.NEXT_PUBLIC_FEATURE_ANALYTICS
-    // Fresh config load requires an explicit mode — otherwise it defaults to
-    // "live" and throws for a missing NEXT_PUBLIC_CORE_API_URL.
     process.env.NEXT_PUBLIC_MOCK_MODE = 'true'
     clearConfigCache()
     
@@ -274,10 +274,10 @@ describe('Analytics feature flag', () => {
     delete process.env.NEXT_PUBLIC_FEATURE_ANALYTICS
     process.env.NEXT_PUBLIC_MOCK_MODE = 'true'
     clearConfigCache()
-
-    delete require.cache[require.resolve('../app/admin/analytics/page')]
-    const AnalyticsPage = require('../app/admin/analytics/page').default
-
+    
+    delete require.cache[require.resolve('../app/[communitySlug]/admin/analytics/page')]
+    const AnalyticsPage = require('../app/[communitySlug]/admin/analytics/page').default
+    
     const html = renderToStaticMarkup(React.createElement(AnalyticsPage))
     assert.match(
       html,
