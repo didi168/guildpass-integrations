@@ -1,6 +1,7 @@
 'use client'
 import { useAccount } from 'wagmi'
 import { useQuery, useQueryClient, useIsFetching } from '@tanstack/react-query'
+import { useParams } from 'next/navigation'
 import {
   getApi,
   type MemberProfile,
@@ -27,6 +28,7 @@ import {
 } from "@/components/ui/api-states";
 import { SyncStatusBanner } from "@/components/ui/sync-status-banner";
 import { AddressText } from "@/components/wallet/address-text";
+import { DisabledTooltip } from "@/components/ui/tooltip";
 import { ProfileEditor } from "@/components/dashboard/profile-editor";
 import { features } from "@/lib/features";
 
@@ -63,24 +65,44 @@ const DASHBOARD_GC_TIME = 30 * 60 * 1000
 
 function Section({
   title,
+  titleAdornment,
   children,
 }: {
   title: string;
+  titleAdornment?: React.ReactNode;
   children: React.ReactNode;
 }) {
   return (
     <Card>
       <CardHeader>
-        <CardTitle>{title}</CardTitle>
+        <CardTitle className="flex items-center gap-2">
+          {title}
+          {titleAdornment}
+        </CardTitle>
       </CardHeader>
       <CardContent>{children}</CardContent>
     </Card>
   );
 }
 
+function PreviewBadge({ label = "Preview", tooltip }: { label?: string; tooltip: string }) {
+  return (
+    <DisabledTooltip content={tooltip}>
+      <Badge
+        variant="outline"
+        className="cursor-default border-amber-300 bg-amber-50 text-amber-900 dark:border-amber-700/40 dark:bg-amber-900/20 dark:text-amber-100"
+      >
+        {label}
+      </Badge>
+    </DisabledTooltip>
+  );
+}
+
 export default function DashboardPage() {
   const { address, isConnected } = useAccount();
   const queryClient = useQueryClient();
+  const params = useParams();
+  const communitySlug = (params?.communitySlug as string) || 'guildpass-demo';
 
   // Tracks whether *any* dashboard query is currently refetching in the
   // background.  Used to show a spinner on the manual refresh button and
@@ -90,10 +112,11 @@ export default function DashboardPage() {
       predicate(query) {
         const key = query.queryKey;
         return (
-          key[0] === 'session' ||
+          (key[0] === 'session' ||
           key[0] === 'walletVerification' ||
           key[0] === 'profile' ||
-          key[0] === 'resources'
+          key[0] === 'resources') &&
+          key[2] === communitySlug
         );
       },
     }) > 0;
@@ -101,10 +124,10 @@ export default function DashboardPage() {
   async function handleRefresh() {
     if (!address || isRefreshing) return;
     await Promise.all([
-      queryClient.invalidateQueries({ queryKey: queryKeys.session.byAddress(address) }),
-      queryClient.invalidateQueries({ queryKey: queryKeys.walletVerification.byAddress(address) }),
-      queryClient.invalidateQueries({ queryKey: queryKeys.profile.byAddress(address) }),
-      queryClient.invalidateQueries({ queryKey: queryKeys.resources.all }),
+      queryClient.invalidateQueries({ queryKey: queryKeys.session.byAddress(address, communitySlug) }),
+      queryClient.invalidateQueries({ queryKey: queryKeys.walletVerification.byAddress(address, communitySlug) }),
+      queryClient.invalidateQueries({ queryKey: queryKeys.profile.byAddress(address, communitySlug) }),
+      queryClient.invalidateQueries({ queryKey: queryKeys.resources.all(communitySlug) }),
     ]);
   }
 
@@ -115,8 +138,8 @@ export default function DashboardPage() {
     error,
     refetch,
   } = useQuery<Session>({
-    queryKey: queryKeys.session.byAddress(address ?? ""),
-    queryFn: ({ signal }) => getApi(address).getSession(signal),
+    queryKey: queryKeys.session.byAddress(address ?? "", communitySlug),
+    queryFn: ({ signal }) => getApi(address, undefined, communitySlug).getSession(signal),
     enabled: !!address,
     retry: retryUnlessAborted,
     staleTime: DASHBOARD_STALE_TIME,
@@ -130,8 +153,8 @@ export default function DashboardPage() {
     error: verifyError,
     refetch: refetchVerification,
   } = useQuery<WalletVerification>({
-    queryKey: queryKeys.walletVerification.byAddress(address ?? ""),
-    queryFn: ({ signal }) => getApi(address).verifyWallet(address as string, signal),
+    queryKey: queryKeys.walletVerification.byAddress(address ?? "", communitySlug),
+    queryFn: ({ signal }) => getApi(address, undefined, communitySlug).verifyWallet(address as string, signal),
     enabled: !!address,
     retry: retryUnlessAborted,
     staleTime: DASHBOARD_STALE_TIME,
@@ -145,8 +168,8 @@ export default function DashboardPage() {
     error: profileError,
     refetch: refetchProfile,
   } = useQuery<MemberProfile | null>({
-    queryKey: queryKeys.profile.byAddress(address ?? ""),
-    queryFn: ({ signal }) => getApi(address).getProfile(address as string, signal),
+    queryKey: queryKeys.profile.byAddress(address ?? "", communitySlug),
+    queryFn: ({ signal }) => getApi(address, undefined, communitySlug).getProfile(address as string, signal),
     enabled: !!address,
     retry: retryUnlessAborted,
     staleTime: DASHBOARD_STALE_TIME,
@@ -160,8 +183,8 @@ export default function DashboardPage() {
     error: resourcesError,
     refetch: refetchResources,
   } = useQuery<Resource[]>({
-    queryKey: queryKeys.resources.all,
-    queryFn: ({ signal }) => getApi(address).listResources(signal),
+    queryKey: queryKeys.resources.all(communitySlug),
+    queryFn: ({ signal }) => getApi(address, undefined, communitySlug).listResources(signal),
     enabled: !!address && features.resources,
     staleTime: DASHBOARD_STALE_TIME,
     gcTime: DASHBOARD_GC_TIME,
@@ -180,7 +203,7 @@ export default function DashboardPage() {
   }
 
   function getResourceHref(resource: Resource): string | null {
-    if (features.resources) return `/resources/${resource.id}`;
+    if (features.resources) return `/${communitySlug}/resources/${resource.id}`;
     return null;
   }
 
@@ -344,7 +367,12 @@ export default function DashboardPage() {
           )}
         </Section>
 
-        <Section title="Badges">
+        <Section
+          title="Badges"
+          titleAdornment={
+            <PreviewBadge tooltip="Badges are coming soon — full badge lifecycle and rewards are still in development." />
+          }
+        >
           {!address ? (
             <DeniedState
               title="Wallet connection required"
@@ -366,8 +394,8 @@ export default function DashboardPage() {
             </div>
           ) : (
             <EmptyState
-              title="No badges yet"
-              message="Complete community milestones to earn badges."
+              title="Badges are coming soon"
+              message="This is a preview of the badges feature. Complete community milestones to earn badges once the full badge system launches."
             />
           )}
         </Section>

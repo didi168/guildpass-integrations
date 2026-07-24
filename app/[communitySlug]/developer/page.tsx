@@ -31,8 +31,12 @@ const SCENARIOS: { id: Scenario; label: string; description: string }[] = [
 export default function DeveloperPage() {
   const { address } = useAccount()
   const queryClient = useQueryClient()
+<<<<<<< HEAD:app/developer/page.tsx
   const [customAddress, setCustomAddress] = useState(address ?? '0x1234567890123456789012345678901234567890')
   const [roleMutationFailureEnabled, setRoleMutationFailureEnabled] = useState(false)
+=======
+  const [customAddress, setCustomAddress] = useState<string>(address ?? '0x1234567890123456789012345678901234567890')
+>>>>>>> 3a0858b1cc48067c63b42b73a1cdfbac0be05c5a:app/[communitySlug]/developer/page.tsx
 
   if (config.apiMode !== 'mock') {
     return (

@@ -124,7 +124,9 @@ export interface MemberCacheClient {
 export function reconcileMemberRoleCache(
   client: MemberCacheClient,
   input: { address: string; role: Role; action: MemberRoleAction },
+  community?: string,
 ): MemberCacheReconcileResult {
+<<<<<<< HEAD
   const entries = client.getQueriesData({ queryKey: queryKeys.members.all })
   const foundExisting = entries.some(([, data]) => entryHasAddress(data, input.address))
 
@@ -135,6 +137,19 @@ export function reconcileMemberRoleCache(
 
   client.setQueriesData({ queryKey: queryKeys.members.all }, (current) =>
     patchEntryData(current, input.address, input.role, input.action),
+=======
+  const key = queryKeys.members.all(community)
+  const cached = client.getQueryData(key)
+
+  if (!Array.isArray(cached)) {
+    void client.invalidateQueries({ queryKey: key })
+    return 'invalidated'
+  }
+
+  const apply = input.action === 'assign' ? applyOptimisticRole : applyOptimisticRemoveRole
+  client.setQueryData(key, (current) =>
+    apply(current, input.address, input.role),
+>>>>>>> 3a0858b1cc48067c63b42b73a1cdfbac0be05c5a
   )
   return 'patched'
 }
