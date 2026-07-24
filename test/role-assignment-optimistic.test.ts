@@ -16,7 +16,7 @@ import type { MemberRow, Role } from '../lib/api/types'
  * (a real QueryClient, the real MockAccessApi, the real optimistic reducer,
  * and the real reconciliation function) against the actual composite,
  * paginated cache shape the page caches under
- * (`[...queryKeys.members.all, { searchQuery }]`, a `useInfiniteQuery`
+ * (`[...queryKeys.members.all(), { searchQuery }]`, a `useInfiniteQuery`
  * `{ pages: [...] }` shape) — not a simplified stand-in. No React rendering,
  * matching the integration style already established in
  * test/member-cache.test.ts.
@@ -25,7 +25,7 @@ import type { MemberRow, Role } from '../lib/api/types'
 const ADDRESS = '0xAbC0000000000000000000000000000000000001'
 
 function membersKey(searchQuery = '') {
-  return [...queryKeys.members.all, { searchQuery }] as const
+  return [...queryKeys.members.all(), { searchQuery }] as const
 }
 
 function seedInfinitePage(members: MemberRow[]) {
@@ -55,10 +55,10 @@ async function assignRoleOptimistically(
   mutationFn: () => Promise<void>,
   input: { address: string; role: Role },
 ): Promise<{ outcome: 'success' } | { outcome: 'error'; error: unknown }> {
-  await qc.cancelQueries({ queryKey: queryKeys.members.all })
-  const previousQueries = qc.getQueriesData({ queryKey: queryKeys.members.all })
+  await qc.cancelQueries({ queryKey: queryKeys.members.all() })
+  const previousQueries = qc.getQueriesData({ queryKey: queryKeys.members.all() })
 
-  qc.setQueriesData({ queryKey: queryKeys.members.all }, (old: any) => {
+  qc.setQueriesData({ queryKey: queryKeys.members.all() }, (old: any) => {
     if (!old) return old
     if (Array.isArray(old)) return applyOptimisticRole(old, input.address, input.role)
     if (old.pages) {

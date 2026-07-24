@@ -91,9 +91,10 @@ function patchEntryData(
  * Uses the prefix-matching `getQueriesData`/`setQueriesData` pair (not the
  * exact-match `getQueryData`/`setQueryData`): the real member list is cached
  * under a composite, filter-dependent key —
- * `[...queryKeys.members.all, { searchQuery }]`, a `useInfiniteQuery`
- * `{ pages: [...] }` shape — not the bare `queryKeys.members.all` key, so an
- * exact-match lookup against the bare key never finds it.
+ * `[...queryKeys.members.all(community), { searchQuery }]`, a
+ * `useInfiniteQuery` `{ pages: [...] }` shape — not the bare
+ * `queryKeys.members.all(community)` key, so an exact-match lookup against
+ * that key alone never finds it.
  */
 export interface MemberCacheClient {
   getQueriesData(filters: { queryKey: readonly unknown[] }): [readonly unknown[], unknown][]
@@ -107,7 +108,7 @@ export interface MemberCacheClient {
 /**
  * Surgically reconcile every cached member-list entry after a successful
  * role mutation instead of refetching `/v1/members` (issue #146, extended
- * for #243). Patches every query cached under the `queryKeys.members.all`
+ * for #243). Patches every query cached under the `queryKeys.members.all(community)`
  * prefix — the plain-array shape and the paginated `useInfiniteQuery` shape
  * alike — using the same pure reducers as the optimistic update.
  *
@@ -120,36 +121,28 @@ export interface MemberCacheClient {
  * would just re-derive the same fabricated data forever; only a real fetch
  * picks up the member's actual tier/active state. Deliberately not a silent
  * no-op in the missing/malformed-cache case either.
+ *
+ * `community` is optional and threads through to `queryKeys.members.all()`,
+ * which itself only includes the community segment in the key when
+ * `features.multiCommunity` is on — so this stays backward-compatible with
+ * the single-community cache shape when that flag is off (the default).
  */
 export function reconcileMemberRoleCache(
   client: MemberCacheClient,
   input: { address: string; role: Role; action: MemberRoleAction },
   community?: string,
 ): MemberCacheReconcileResult {
-<<<<<<< HEAD
-  const entries = client.getQueriesData({ queryKey: queryKeys.members.all })
+  const prefix = queryKeys.members.all(community)
+  const entries = client.getQueriesData({ queryKey: prefix })
   const foundExisting = entries.some(([, data]) => entryHasAddress(data, input.address))
 
   if (!foundExisting) {
-    void client.invalidateQueries({ queryKey: queryKeys.members.all })
+    void client.invalidateQueries({ queryKey: prefix })
     return 'invalidated'
   }
 
-  client.setQueriesData({ queryKey: queryKeys.members.all }, (current) =>
+  client.setQueriesData({ queryKey: prefix }, (current) =>
     patchEntryData(current, input.address, input.role, input.action),
-=======
-  const key = queryKeys.members.all(community)
-  const cached = client.getQueryData(key)
-
-  if (!Array.isArray(cached)) {
-    void client.invalidateQueries({ queryKey: key })
-    return 'invalidated'
-  }
-
-  const apply = input.action === 'assign' ? applyOptimisticRole : applyOptimisticRemoveRole
-  client.setQueryData(key, (current) =>
-    apply(current, input.address, input.role),
->>>>>>> 3a0858b1cc48067c63b42b73a1cdfbac0be05c5a
   )
   return 'patched'
 }

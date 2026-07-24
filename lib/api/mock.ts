@@ -540,19 +540,11 @@ export async function replayMockEvent(eventId: string, communityId: string = 'gu
  */
 export async function resetMockData() {
   await initPromise
-<<<<<<< HEAD
-  community = { ...DEFAULT_COMMUNITY }
-  resources = [...DEFAULT_RESOURCES]
-  policies = [...DEFAULT_POLICIES]
-  mockWebhookEvents = [...DEFAULT_WEBHOOK_EVENTS]
-  memberStore = { ...DEFAULT_MEMBER_STORE }
-  mockRoleMutationShouldFail = false
-=======
   communityStates = {}
   for (const cid of Object.keys(MOCK_COMMUNITIES)) {
     getCommunityState(cid)
   }
->>>>>>> 3a0858b1cc48067c63b42b73a1cdfbac0be05c5a
+  mockRoleMutationShouldFail = false
   await clearPersistedState()
 }
 
@@ -1036,12 +1028,8 @@ export class MockAccessApi implements AccessApi {
   async assignRole(address: string, role: Role): Promise<void> {
     await initPromise
     if (MOCK_SESSION_STATE === 'expired') throwMockUnauthorized()
-<<<<<<< HEAD
     if (mockRoleMutationShouldFail) throwMockRoleMutationFailure()
-    const data = ensureAddress(address)
-=======
     const data = ensureAddress(address, this.communityId)
->>>>>>> 3a0858b1cc48067c63b42b73a1cdfbac0be05c5a
     if (!data) return
     if (!data.roles.includes(role)) data.roles.push(role)
     schedulePersist()
@@ -1050,13 +1038,9 @@ export class MockAccessApi implements AccessApi {
   async removeRole(address: string, role: Role): Promise<void> {
     await initPromise
     if (MOCK_SESSION_STATE === 'expired') throwMockUnauthorized()
-<<<<<<< HEAD
     if (mockRoleMutationShouldFail) throwMockRoleMutationFailure()
-    const data = memberStore[address]
-=======
     const state = getCommunityState(this.communityId)
     const data = state.memberStore[address]
->>>>>>> 3a0858b1cc48067c63b42b73a1cdfbac0be05c5a
     if (!data) return
     data.roles = data.roles.filter((r) => r !== role)
     schedulePersist()

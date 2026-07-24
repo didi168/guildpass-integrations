@@ -413,8 +413,7 @@ export default function MembersPage() {
           qc.setQueryData(queryKey, oldData);
         }
       }
-<<<<<<< HEAD:app/admin/members/page.tsx
-      void qc.invalidateQueries({ queryKey: queryKeys.members.all });
+      void qc.invalidateQueries({ queryKey: queryKeys.members.all(communitySlug) });
       const isExpiredSession = err instanceof AuthError && err.code === "unauthorized";
       const message = isExpiredSession
         ? "Session expired. Use the re-authentication banner to sign in again."
@@ -427,11 +426,6 @@ export default function MembersPage() {
         description: message,
       });
       if (isExpiredSession) {
-=======
-      void qc.invalidateQueries({ queryKey: queryKeys.members.all(communitySlug) });
-      setRollbackMessage(`Change reverted: ${safeErrorMessage(err)}`);
-      if (err instanceof AuthError) {
->>>>>>> 3a0858b1cc48067c63b42b73a1cdfbac0be05c5a:app/[communitySlug]/admin/members/page.tsx
         markExpired();
       }
     },

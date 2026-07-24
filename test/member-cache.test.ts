@@ -30,7 +30,7 @@ function seedRows(): MemberRow[] {
   ]
 }
 
-/** The real page's useInfiniteQuery page shape (app/admin/members/page.tsx). */
+/** The real page's useInfiniteQuery page shape (app/[communitySlug]/admin/members/page.tsx). */
 function seedInfinitePage(members: MemberRow[]) {
   return {
     pages: [{ members, nextCursor: undefined, isFallback: true }],
@@ -40,7 +40,7 @@ function seedInfinitePage(members: MemberRow[]) {
 
 /** The real page's composite, filter-dependent query key. */
 function membersKey(searchQuery = '') {
-  return [...queryKeys.members.all, { searchQuery }] as const
+  return [...queryKeys.members.all(), { searchQuery }] as const
 }
 
 function settle(ms = 30): Promise<void> {
@@ -59,7 +59,6 @@ async function makeRealClient(entries: { key: readonly unknown[]; data: unknown 
       queries: { retry: false, staleTime: Infinity, gcTime: Infinity },
     },
   })
-<<<<<<< HEAD
   const unsubscribes: Array<() => void> = []
 
   for (const { key, data } of entries) {
@@ -75,15 +74,6 @@ async function makeRealClient(entries: { key: readonly unknown[]; data: unknown 
     unsubscribes.push(observer.subscribe(() => {}))
   }
 
-=======
-  await client.fetchQuery({ queryKey: queryKeys.members.all(), queryFn })
-  client.setQueryData<MemberRow[]>(queryKeys.members.all(), rows)
-  const observer = new QueryObserver<MemberRow[]>(client, {
-    queryKey: queryKeys.members.all(),
-    queryFn,
-  })
-  const unsubscribe = observer.subscribe(() => {})
->>>>>>> 3a0858b1cc48067c63b42b73a1cdfbac0be05c5a
   return {
     client,
     getFetchCount: (key: readonly unknown[]) => fetchCounts.get(JSON.stringify(key)) ?? 0,
@@ -137,7 +127,7 @@ function rolesOf(rows: MemberRow[], address: string): string[] | undefined {
 
 describe('reconcileMemberRoleCache', () => {
   it('assign patches a plain-array cache entry without refetching', async () => {
-    const key = queryKeys.members.all
+    const key = queryKeys.members.all()
     const { client, getFetchCount, cleanup } = await makeRealClient([{ key, data: seedRows() }])
     try {
       const result = reconcileMemberRoleCache(client, {
@@ -147,11 +137,7 @@ describe('reconcileMemberRoleCache', () => {
       })
       assert.equal(result, 'patched')
 
-<<<<<<< HEAD
       const rows = client.getQueryData<MemberRow[]>([...key])
-=======
-      const rows = client.getQueryData<MemberRow[]>(queryKeys.members.all())
->>>>>>> 3a0858b1cc48067c63b42b73a1cdfbac0be05c5a
       assert.ok(rows)
       assert.deepEqual(rolesOf(rows, ALICE.address), ['member', 'moderator'])
 
@@ -168,7 +154,6 @@ describe('reconcileMemberRoleCache', () => {
       { key, data: seedInfinitePage(seedRows()) },
     ])
     try {
-<<<<<<< HEAD
       const result = reconcileMemberRoleCache(client, {
         address: ALICE.address,
         role: 'moderator',
@@ -182,10 +167,6 @@ describe('reconcileMemberRoleCache', () => {
       // Sibling row untouched.
       assert.deepEqual(rolesOf(cached.pages[0].members, BOB.address), ['member', 'admin'])
 
-=======
-      assert.equal(getFetchCount(), 1)
-      void client.invalidateQueries({ queryKey: queryKeys.members.all() })
->>>>>>> 3a0858b1cc48067c63b42b73a1cdfbac0be05c5a
       await settle()
       assert.equal(getFetchCount(key), 1, 'a successful mutation must not trigger a refetch')
     } finally {
@@ -206,15 +187,9 @@ describe('reconcileMemberRoleCache', () => {
       })
       assert.equal(result, 'patched')
 
-<<<<<<< HEAD
       const cached = client.getQueryData<{ pages: { members: MemberRow[] }[] }>([...key])
       assert.ok(cached)
       assert.deepEqual(rolesOf(cached.pages[0].members, BOB.address), ['member'])
-=======
-      const rows = client.getQueryData<MemberRow[]>(queryKeys.members.all())
-      assert.ok(rows)
-      assert.deepEqual(rolesOf(rows, BOB.address), ['member'])
->>>>>>> 3a0858b1cc48067c63b42b73a1cdfbac0be05c5a
 
       await settle()
       assert.equal(getFetchCount(key), 1)
@@ -224,7 +199,7 @@ describe('reconcileMemberRoleCache', () => {
   })
 
   it('patches every matching entry at once — bare key and composite key together', () => {
-    const bareKey = queryKeys.members.all
+    const bareKey = queryKeys.members.all()
     const compositeKey = membersKey('some filter')
     const fake = makeFakeClient([
       { key: bareKey, data: seedRows() },
